@@ -1,0 +1,25 @@
+# https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+---
+BasedOnStyle: Google
+AccessModifierOffset: -4
+AlignAfterOpenBracket: DontAlign
+AlignArrayOfStructures: Right
+AlignEscapedNewlines: Right
+AllowShortBlocksOnASingleLine: Empty
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Inline
+AlwaysBreakBeforeMultilineStrings: false
+BreakBeforeTernaryOperators: false
+BreakInheritanceList: AfterComma
+IndentPPDirectives: BeforeHash
+IndentWidth: 4
+IndentWrappedFunctionNames: true
+IndentAccessModifiers: false
+InsertNewlineAtEOF: true
+LineEnding: CRLF
+RequiresExpressionIndentation: OuterScope
+SortIncludes: Never
+SpaceAfterCStyleCast: true
+TabWidth: 4

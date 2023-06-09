@@ -1,0 +1,16 @@
+CompileFlags:
+  Add: [
+    -Weverything
+    -Weffc++
+    -Wno-c++98-compat
+    -Wno-c++98-compat-pedantic
+    -Wno-c++11-compat
+    -Wno-c++14-compat
+    -Wno-c++17-compat
+    -Wno-c++20-compat
+    -Wno-old-style-cast
+    -Wno-newline-eof
+    -Wno-reserved-identifier,
+    -Wno-c++20-compat
+    -Wno-c++20-extensions
+  ]
