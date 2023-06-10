@@ -8,7 +8,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(RayTracing
     ${PROJECT_SOURCE_DIR}/src/main.cpp
-    ${PROJECT_SOURCE_DIR}/src/glad_impl.cpp
+    ${PROJECT_SOURCE_DIR}/src/VulkanHeader.h
+    ${PROJECT_SOURCE_DIR}/src/VulkanLoad.cpp
+    ${PROJECT_SOURCE_DIR}/src/VulkanDevice.h
+    ${PROJECT_SOURCE_DIR}/src/VulkanDevice.cpp
 )
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
@@ -52,6 +55,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     )
 endif()
 
+option(VK_DBG "Enable vulkan debug utility" OFF)
+
+target_compile_definitions(RayTracing
+    PRIVATE
+        ROOT_PATH="${PROJECT_SOURCE_DIR}"
+        $<$<BOOL:${VK_DBG}>:VK_DBG>
+)
+
 if (EXISTS "${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json")
     if (EXISTS "${PROJECT_SOURCE_DIR}/compile_commands.json")
         file(REMOVE ${PROJECT_SOURCE_DIR}/compile_commands.json)
@@ -79,18 +90,18 @@ option(FMT_MODULE OFF)
 option(FMT_SYSTEM_HEADERS OFF)
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/fmt)
 
-target_link_libraries(
-    RayTracing
-        PRIVATE
-            glfw
-            fmt::fmt
+target_link_libraries(RayTracing
+    PRIVATE
+        glfw
+        fmt::fmt
+        $ENV{VULKAN_SDK}/Lib/shaderc_combined.lib
 )
 
-target_include_directories(
-    RayTracing
-        PRIVATE
-            ${PROJECT_SOURCE_DIR}/third_party/glfw/include
-            ${PROJECT_SOURCE_DIR}/third_party/glad/include
-            ${PROJECT_SOURCE_DIR}/third_party/fmt/include
+target_include_directories(RayTracing
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/third_party/glfw/include
+        ${PROJECT_SOURCE_DIR}/third_party/glad/include
+        ${PROJECT_SOURCE_DIR}/third_party/fmt/include
+        $ENV{VULKAN_SDK}/Include
 )
 

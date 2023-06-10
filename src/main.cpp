@@ -1,30 +1,39 @@
-#include <iostream>
+#include <vector>
+#include <fstream>
+#include <filesystem>
+#include <iterator>
+#include <cassert>
+#include <span>
+#include <array>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Weverything"
 #include "fmt/core.h"
-#include "fmt/color.h"
-#include "glad/glad.h"
 #include "GLFW/glfw3.h"
 #pragma clang diagnostic pop
 
-int main() {
+#include "VulkanDevice.h"
+
+static void glfw_error_callback(int error, const char* desc) {
+    fmt::println("GLFW Error ({}): {}", error, desc);
+}
+
+static GLFWwindow* create_window(int width, int height) noexcept {
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwSetErrorCallback(glfw_error_callback);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* window =
-        glfwCreateWindow(800, 600, "RayTracing", nullptr, nullptr);
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    int gl_ver = gladLoadGLLoader(
-        [](const char* s) -> void* { return (void*) glfwGetProcAddress(s); });
-    fmt::println("GL {}", gl_ver);
+        glfwCreateWindow(width, height, "RayTracing", nullptr, nullptr);
+    return window;
+}
+
+int main() {
+    int constexpr win_width = 800;
+    int constexpr win_height = 600;
+    GLFWwindow* window = create_window(win_width, win_height);
+    VulkanDevice dev{};
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        glClearColor(0.7f, 0.7f, 0.7f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glfwSwapBuffers(window);
     }
     glfwTerminate();
     return 0;
