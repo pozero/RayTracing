@@ -7,7 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(RayTracing
+    ${PROJECT_SOURCE_DIR}/src/vma_impl.cpp
     ${PROJECT_SOURCE_DIR}/src/main.cpp
+    ${PROJECT_SOURCE_DIR}/src/Check.h
     ${PROJECT_SOURCE_DIR}/src/VulkanHeader.h
     ${PROJECT_SOURCE_DIR}/src/VulkanLoad.cpp
     ${PROJECT_SOURCE_DIR}/src/VulkanDevice.h
@@ -102,6 +104,7 @@ target_include_directories(RayTracing
         ${PROJECT_SOURCE_DIR}/third_party/glfw/include
         ${PROJECT_SOURCE_DIR}/third_party/glad/include
         ${PROJECT_SOURCE_DIR}/third_party/fmt/include
+        ${PROJECT_SOURCE_DIR}/third_party/vma/include
         $ENV{VULKAN_SDK}/Include
 )
 
