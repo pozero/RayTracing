@@ -52,10 +52,23 @@ int main() {
     vk::PhysicalDeviceSynchronization2Features const synchron2_feature{
         .synchronization2 = VK_TRUE};
     dev_creation_pnext = &synchron2_feature;
-    VulkanDevice dev{inst_ext, inst_layer, window, dev_ext, dev_creation_pnext};
+    vk::DynamicLoader vk_loader = load_vulkan();
+    vk::Instance vk_inst = create_instance(inst_ext, inst_layer);
+    [[maybe_unused]] vk::DebugUtilsMessengerEXT vk_dbg_messenger =
+        create_debug_messenger(vk_inst);
+    vk::SurfaceKHR vk_surface = create_surface(vk_inst, window);
+    auto [vk_dev, vk_phy_dev, queue_infos] =
+        select_physical_device_create_device_queues(
+            vk_inst, vk_surface, dev_ext, dev_creation_pnext);
+    VmaAllocator vma_alloc = create_vma_allocator(vk_inst, vk_phy_dev, vk_dev);
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
     }
     glfwTerminate();
+    vmaDestroyAllocator(vma_alloc);
+    vk_dev.destroy();
+    vk_inst.destroySurfaceKHR(vk_surface);
+    vk_inst.destroyDebugUtilsMessengerEXT(vk_dbg_messenger);
+    vk_inst.destroy();
     return 0;
 }

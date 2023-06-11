@@ -14,6 +14,14 @@ add_executable(RayTracing
     ${PROJECT_SOURCE_DIR}/src/VulkanLoad.cpp
     ${PROJECT_SOURCE_DIR}/src/VulkanDevice.h
     ${PROJECT_SOURCE_DIR}/src/VulkanDevice.cpp
+    ${PROJECT_SOURCE_DIR}/src/VulkanPipeline.h
+    ${PROJECT_SOURCE_DIR}/src/VulkanPipeline.cpp
+    ${PROJECT_SOURCE_DIR}/src/VulkanDescriptor.h
+    ${PROJECT_SOURCE_DIR}/src/VulkanDescriptor.cpp
+    ${PROJECT_SOURCE_DIR}/src/VulkanBuffer.h
+    ${PROJECT_SOURCE_DIR}/src/VulkanBuffer.cpp
+    ${PROJECT_SOURCE_DIR}/src/VulkanImage.h
+    ${PROJECT_SOURCE_DIR}/src/VulkanImage.cpp
 )
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
