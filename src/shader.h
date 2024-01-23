@@ -1,7 +1,12 @@
 #pragma once
 
-#include <string>
+#include <string_view>
 #include <vector>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Weverything"
+#include "glm/vec3.hpp"
+#pragma clang diagnostic pop
 
 class Shader {
 public:
@@ -24,11 +29,15 @@ public:
 
     void use() const;
 
-    void setBool(const std::string &name, bool value) const;
+    void set_bool(std::string_view name, bool value) const;
 
-    void setInt(const std::string &name, int value) const;
+    void set_int(std::string_view name, int value) const;
 
-    void setFloat(const std::string &name, float value) const;
+    void set_float(std::string_view name, float value) const;
+
+    void set_vec3(std::string_view name, glm::vec3 const &vec3) const;
+
+    void set_vec3(std::string_view name, float x, float y, float z) const;
 
 private:
     void check_link_error() const;

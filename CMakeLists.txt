@@ -82,6 +82,7 @@ target_include_directories(Raytracing
         ${PROJECT_SOURCE_DIR}/src
         ${PROJECT_SOURCE_DIR}/third_party/glfw/include
         ${PROJECT_SOURCE_DIR}/third_party/glad/include
+        ${PROJECT_SOURCE_DIR}/third_party/glm
 )
 
 set(GLFW_BUILD_EXAMPLES OFF)
@@ -90,9 +91,12 @@ set(GLFW_BUILD_DOCS OFF)
 set(GLFW_INSTALL OFF)
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/glfw)
 
+add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/glm)
+
 target_link_libraries(Raytracing
     PRIVATE
         glfw
+        glm::glm
 )
 
 compilation_config(Raytracing)

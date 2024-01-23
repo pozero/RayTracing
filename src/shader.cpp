@@ -58,16 +58,24 @@ void Program::use() const {
     glUseProgram(m_id);
 }
 
-void Program::setBool(const std::string& name, bool value) const {
-    glUniform1i(glGetUniformLocation(m_id, name.c_str()), (int) value);
+void Program::set_bool(std::string_view name, bool value) const {
+    glUniform1i(glGetUniformLocation(m_id, name.data()), (int) value);
 }
 
-void Program::setInt(const std::string& name, int value) const {
-    glUniform1i(glGetUniformLocation(m_id, name.c_str()), value);
+void Program::set_int(std::string_view name, int value) const {
+    glUniform1i(glGetUniformLocation(m_id, name.data()), value);
 }
 
-void Program::setFloat(const std::string& name, float value) const {
-    glUniform1f(glGetUniformLocation(m_id, name.c_str()), value);
+void Program::set_float(std::string_view name, float value) const {
+    glUniform1f(glGetUniformLocation(m_id, name.data()), value);
+}
+
+void Program::set_vec3(std::string_view name, glm::vec3 const& vec3) const {
+    glUniform3fv(glGetUniformLocation(m_id, name.data()), 1, &vec3[0]);
+}
+
+void Program::set_vec3(std::string_view name, float x, float y, float z) const {
+    glUniform3f(glGetUniformLocation(m_id, name.data()), x, y, z);
 }
 
 void Program::check_link_error() const {
