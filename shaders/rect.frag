@@ -1,10 +1,10 @@
-#version 460 core
+#version 450
 
-in vec2 texcoord;
+layout (location = 0) in vec2 texcoord;
 
-out vec4 out_frag;
+layout (location = 0) out vec4 out_frag;
 
-uniform sampler2D frame;
+layout (binding = 0) uniform sampler2D frame;
 
 void main() {
     vec3 color = texture(frame, texcoord).rgb;

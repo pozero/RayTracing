@@ -35,46 +35,42 @@ else()
     message(STATUS "IPO isn't supported: <${IPO_ERROR}>")
 endif()
 
-function(COMPILATION_CONFIG TARGET)
-    if (IPO)
-        set_property(TARGET ${TARGET} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    endif()
-    target_compile_definitions(${TARGET}
-        PRIVATE
-            ROOT_PATH="${PROJECT_SOURCE_DIR}"
-    )
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        target_compile_options(${TARGET} 
-            PRIVATE 
-                -Werror
-                -Weverything
-                -Weffc++
-                -Wno-c++98-compat
-                -Wno-c++98-compat-pedantic
-                -Wno-c++11-compat
-                -Wno-c++14-compat
-                -Wno-c++17-compat
-                -Wno-c++20-compat
-                -Wno-c++20-extensions
-                -Wno-old-style-cast
-                -Wno-newline-eof
-                -ffast-math 
-                $<$<CONFIG:Debug>:-fstandalone-debug>
-                $<$<CONFIG:RelWithDebInfo>:-fstandalone-debug>
-        )
-    else()
-        message(FATAL_ERROR "Unsupported compiler: ${CMAKE_CXX_COMPILER_ID}")
-    endif()
-endfunction()
-
 add_executable(Raytracing)
+
+if (IPO)
+    set_property(TARGET Raytracing PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+target_compile_definitions(Raytracing
+    PRIVATE
+        ROOT_PATH="${PROJECT_SOURCE_DIR}"
+)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(Raytracing 
+        PRIVATE 
+            -Werror
+            -Weverything
+            -Weffc++
+            -Wno-c++98-compat
+            -Wno-c++98-compat-pedantic
+            -Wno-c++11-compat
+            -Wno-c++14-compat
+            -Wno-c++17-compat
+            -Wno-c++20-compat
+            -Wno-c++20-extensions
+            -Wno-old-style-cast
+            -Wno-newline-eof
+            -ffast-math 
+            $<$<CONFIG:Debug>:-fstandalone-debug>
+            $<$<CONFIG:RelWithDebInfo>:-fstandalone-debug>
+    )
+else()
+    message(FATAL_ERROR "Unsupported compiler: ${CMAKE_CXX_COMPILER_ID}")
+endif()
 
 target_sources(Raytracing
     PRIVATE
         ${PROJECT_SOURCE_DIR}/src/main.cpp
         ${PROJECT_SOURCE_DIR}/src/glad_impl.cpp
-        ${PROJECT_SOURCE_DIR}/src/shader.cpp
-        ${PROJECT_SOURCE_DIR}/src/shader.h
 )
 
 target_include_directories(Raytracing
@@ -99,15 +95,37 @@ target_link_libraries(Raytracing
         glm::glm
 )
 
-compilation_config(Raytracing)
+file(GLOB_RECURSE 
+    GLSL_SOURCE_FILES
+        "shaders/*.frag"
+        "shaders/*.vert"
+        "shaders/*.comp"
+)
 
-ADD_CUSTOM_TARGET(link_compile_database 
+foreach(GLSL ${GLSL_SOURCE_FILES})
+  get_filename_component(FILE_NAME ${GLSL} NAME)
+  set(SPIRV "${PROJECT_BINARY_DIR}/shaders/${FILE_NAME}.spv")
+  add_custom_command(
+    OUTPUT ${SPIRV}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
+    COMMAND glslc --target-env=opengl -O ${GLSL} -o ${SPIRV}
+    DEPENDS ${GLSL})
+  list(APPEND SPIRV_BINARY_FILES ${SPIRV})
+endforeach(GLSL)
+
+add_custom_target(compile_shaders
+    DEPENDS ${SPIRV_BINARY_FILES}
+)
+
+add_dependencies(Raytracing compile_shaders)
+
+add_custom_target(link_compile_database 
     ALL
         COMMAND 
             ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json ${PROJECT_SOURCE_DIR}/compile_commands.json
 )
 
-ADD_CUSTOM_TARGET(link_executable 
+add_custom_target(link_executable 
     ALL
         COMMAND 
             ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_BINARY_DIR}/Raytracing ${PROJECT_SOURCE_DIR}/Raytracing

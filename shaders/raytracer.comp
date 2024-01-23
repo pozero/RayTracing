@@ -1,0 +1,111 @@
+#version 450
+
+#extension GL_EXT_scalar_block_layout: require
+
+struct ray_t {
+    vec3 origin;
+    vec3 direction;
+};
+
+vec3 ray_at(const in ray_t ray,
+            const in float t) {
+    return ray.origin + t * ray.direction;
+}
+
+struct hit_record_t {
+    vec3 point;
+    // normal always points against ray direction
+    vec3 normal;
+    float t;
+    bool front_face;
+};
+
+void hit_record_set_front_face(inout hit_record_t record, 
+                               const in ray_t ray,
+                               const in vec3 outward_normal) {
+    record.front_face = dot(ray.direction, outward_normal) < 0.0;
+    record.normal = record.front_face ? outward_normal : -outward_normal;
+}
+
+struct sphere_t {
+    vec3 center;
+    float radius;
+};
+
+bool hit_sphere(const in sphere_t sphere, 
+                const in ray_t ray, 
+                const in float t_min,
+                const in float t_max,
+                out hit_record_t record) {
+    const vec3 oc = ray.origin - sphere.center;
+    const float a = dot(ray.direction, ray.direction);
+    const float half_b = dot(oc, ray.direction);
+    const float c = dot(oc, oc) - sphere.radius * sphere.radius;
+    const float discriminant = half_b * half_b - a * c;
+    if (discriminant < 0.0) {
+        return false;
+    } else {
+        record.t = (-half_b - sqrt(discriminant)) / a;
+        if (record.t < t_min || record.t > t_max) {
+            return false;
+        }
+        record.point = ray_at(ray, record.t);
+        const vec3 outward_normal = (record.point - sphere.center) / sphere.radius;
+        hit_record_set_front_face(record, ray, outward_normal);
+        return true;
+    }
+}
+
+vec4 gradient_background(const in vec4 top_color,
+                         const in vec4 bottom_color,
+                         const in ray_t ray) {
+    const float a = 0.5 * (ray.direction.y + 1.0);
+    return a * top_color + (1.0 - a) * bottom_color;
+}
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(rgba32f, binding = 0) uniform image2D img_output;
+
+layout(constant_id = 0) const uint SPHERE_COUNT = 1;
+
+layout(std430, binding = 0) uniform camera {
+    float pixel_delta_u_val[3];
+    float pixel_delta_v_val[3];
+    float upper_left_pixel_val[3];
+    float camera_position_val[3];
+};
+
+layout(std430, binding = 1) uniform geometries_sphere {
+    sphere_t spheres[SPHERE_COUNT];
+};
+
+void main() {
+    const vec3 pixel_delta_u = vec3(pixel_delta_u_val[0], pixel_delta_u_val[1], pixel_delta_u_val[2]);
+    const vec3 pixel_delta_v = vec3(pixel_delta_v_val[0], pixel_delta_v_val[1], pixel_delta_v_val[2]);
+    const vec3 upper_left_pixel = vec3(upper_left_pixel_val[0], upper_left_pixel_val[1], upper_left_pixel_val[2]);
+    const vec3 camera_position = vec3(camera_position_val[0], camera_position_val[1], camera_position_val[2]);
+
+    const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
+    const vec3 pixel = upper_left_pixel + 
+                 tex_coord.x * pixel_delta_u + 
+                 (gl_NumWorkGroups.y - tex_coord.y) * pixel_delta_v;
+    const ray_t ray = ray_t(camera_position, normalize(pixel - camera_position));
+
+    const float t_min = 0.0;
+    float t_max = 1.0 / 0.0;
+    hit_record_t hit_record = hit_record_t(vec3(0.0), vec3(0.0), 0.0, false);
+    float hit_anything = 0.0;
+    for (int i = 0; i < SPHERE_COUNT; ++ i) {
+        if (hit_sphere(spheres[i], ray, t_min, t_max, hit_record)) {
+            t_max = hit_record.t;
+            hit_anything = 1.0;
+        }
+    }
+    const vec4 sphere_color = vec4(0.5 * (hit_record.normal + vec3(1.0, 1.0, 1.0)), 1.0);
+    const vec4 background_color = gradient_background(vec4(0.5, 0.7, 1.0, 1.0), 
+                                                      vec4(1.0, 1.0, 1.0, 1.0),
+                                                      ray);
+    const vec4 final = hit_anything * sphere_color + (1.0 - hit_anything) * background_color;
+    imageStore(img_output, tex_coord, final);
+}
