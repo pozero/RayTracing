@@ -53,8 +53,8 @@ int main() {
     glViewport(0, 0, window_width, window_height);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    int constexpr FRAME_WIDTH = 512;
-    int constexpr FRAME_HEIGHT = 512;
+    int constexpr FRAME_WIDTH = 800;
+    int constexpr FRAME_HEIGHT = 600;
     unsigned int frame = 0;
     glGenTextures(1, &frame);
     glActiveTexture(GL_TEXTURE0);

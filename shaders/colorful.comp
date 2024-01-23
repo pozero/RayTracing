@@ -9,15 +9,43 @@ uniform vec3 pixel_delta_u;
 uniform vec3 pixel_delta_v;
 uniform vec3 camera_position;
 
+float hit_sphere(const in vec3 center, 
+                 const in float radius, 
+                 const in vec3 ray_origin,
+                 const in vec3 ray_direction) {
+    const vec3 oc = ray_origin - center;
+    const float a = dot(ray_direction, ray_direction);
+    const float half_b = dot(oc, ray_direction);
+    const float c = dot(oc, oc) - radius * radius;
+    const float discriminant = half_b * half_b - a * c;
+    return discriminant < 0 ? -1.0 : (-half_b - sqrt(discriminant)) / a;
+}
+
+vec3 ray_at(const in vec3 ray_origin,
+            const in vec3 ray_direction,
+            const in float t) {
+    return ray_origin + t * ray_direction;
+}
+
 void main() {
-    ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
-    vec3 pixel = upper_left_pixel + 
+    const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
+    const vec3 pixel = upper_left_pixel + 
                  tex_coord.x * pixel_delta_u + 
                  (gl_NumWorkGroups.y - tex_coord.y) * pixel_delta_v;
-    vec3 ray_direction = pixel - camera_position;
+    const vec3 ray_direction = normalize(pixel - camera_position);
 
-    vec3 unit_ray_direction = normalize(ray_direction);
-    float a = 0.5 * (unit_ray_direction.y + 1.0);
-    vec4 value = (1.0 - a) * vec4(1.0, 1.0, 1.0, 1.0) + a * vec4(0.5, 0.7, 1.0, 1.0);
-    imageStore(img_output, tex_coord, value);
+    const float t = hit_sphere(vec3(0.0, 0.0, -1.0),
+                                 0.5,
+                                 camera_position,
+                                 ray_direction);
+    const float hit = float(t >= 0.0);
+    const vec3 normal = normalize(ray_at(camera_position, ray_direction, t) - 
+                                  vec3(0.0, 0.0, -1.0));
+    const vec4 sphere = vec4(0.5 * (normal + vec3(1.0, 1.0, 1.0)), 1.0);
+    const float a = 0.5 * (ray_direction.y + 1.0);
+    const vec4 background = (1.0 - a) * vec4(1.0, 1.0, 1.0, 1.0) + 
+                            a * vec4(0.5, 0.7, 1.0, 1.0);
+    const vec4 final = hit * sphere + (1 - hit) * background;
+
+    imageStore(img_output, tex_coord, final);
 }
