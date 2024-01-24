@@ -10,17 +10,30 @@
 #include "glm/gtc/type_ptr.hpp"
 #pragma clang diagnostic pop
 
+#define LAMBERTIAN_MATERIAL 0
+#define METAL_MATERIAL 1
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+struct material {
+    int type;
+    alignas(sizeof(glm::vec4)) glm::vec3 albedo;
+    float fuzz;
+};
+
 struct sphere {
     glm::vec3 center;
     float radius;
+    material material;
 };
 
 struct camera {
-    glm::vec3 pixel_delta_u;
-    glm::vec3 pixel_delta_v;
-    glm::vec3 upper_left_pixel;
-    glm::vec3 camera_position;
+    alignas(sizeof(glm::vec4)) glm::vec3 pixel_delta_u;
+    alignas(sizeof(glm::vec4)) glm::vec3 pixel_delta_v;
+    alignas(sizeof(glm::vec4)) glm::vec3 upper_left_pixel;
+    alignas(sizeof(glm::vec4)) glm::vec3 camera_position;
 };
+#pragma clang diagnostic pop
 
 static int window_width = 800;
 static int window_height = 600;
@@ -149,18 +162,33 @@ int main() {
     glBindTexture(GL_TEXTURE_2D, frame);
 
     unsigned int camera_buffer = 0;
-    unsigned int constexpr CAMERA_BUFFER_SIZE = 4 * sizeof(glm::vec3);
     glGenBuffers(1, &camera_buffer);
     glBindBuffer(GL_UNIFORM_BUFFER, camera_buffer);
-    glBufferData(
-        GL_UNIFORM_BUFFER, CAMERA_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(camera), nullptr, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    glBindBufferRange(
-        GL_UNIFORM_BUFFER, 0, camera_buffer, 0, CAMERA_BUFFER_SIZE);
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, camera_buffer, 0, sizeof(camera));
 
+    material material_ground{
+        LAMBERTIAN_MATERIAL, glm::vec3{0.8f, 0.8f, 0.0f},
+         0.0f
+    };
+    material material_center{
+        LAMBERTIAN_MATERIAL, glm::vec3{0.7f, 0.3f, 0.3f},
+         0.0f
+    };
+    material material_left{
+        METAL_MATERIAL, glm::vec3{0.8f, 0.8f, 0.8f},
+         0.3f
+    };
+    material material_right{
+        METAL_MATERIAL, glm::vec3{0.8f, 0.6f, 0.2f},
+         -1.0f
+    };
     std::array spheres{
-        sphere{   glm::vec3{0.0f, 0.0f, -1.0f},   0.5f},
-        sphere{glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f},
+        sphere{glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f, material_ground},
+        sphere{   glm::vec3{0.0f, 0.0f, -1.0f},   0.5f, material_center},
+        sphere{  glm::vec3{-1.0f, 0.0f, -1.0f},   0.5f,   material_left},
+        sphere{   glm::vec3{1.0f, 0.0f, -1.0f},   0.5f,  material_right},
     };
     unsigned int constexpr SPHERE_BUFFER_SIZE =
         static_cast<unsigned int>(sizeof(sphere) * spheres.size());
@@ -173,13 +201,12 @@ int main() {
     glBindBufferRange(
         GL_UNIFORM_BUFFER, 1, sphere_buffer, 0, SPHERE_BUFFER_SIZE);
 
-    int constexpr SAMPLE_PER_PIXEL = 4;
     float constexpr focal_length = 1.0f;
     float constexpr viewport_height = 2.0f;
     float constexpr viewport_width =
         viewport_height *
         (static_cast<float>(FRAME_WIDTH) / static_cast<float>(FRAME_HEIGHT));
-    glm::vec3 const camera_position{0.0, 0.0, 0.0};
+    glm::vec3 const camera_position{0.0f, 0.0f, 0.0f};
 
     unsigned int raytracer_program = glCreateProgram();
     {
@@ -230,9 +257,9 @@ int main() {
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(camera), &camera);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        glClearTexImage(frame, 0, GL_RGBA, GL_FLOAT, nullptr);
+        // glClearTexImage(frame, 0, GL_RGBA, GL_FLOAT, nullptr);
         glUseProgram(raytracer_program);
-        glDispatchCompute(FRAME_WIDTH, FRAME_HEIGHT, SAMPLE_PER_PIXEL);
+        glDispatchCompute(FRAME_WIDTH, FRAME_HEIGHT, 1);
 
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
