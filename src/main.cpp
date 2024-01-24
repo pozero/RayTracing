@@ -173,6 +173,7 @@ int main() {
     glBindBufferRange(
         GL_UNIFORM_BUFFER, 1, sphere_buffer, 0, SPHERE_BUFFER_SIZE);
 
+    int constexpr SAMPLE_PER_PIXEL = 6;
     float constexpr focal_length = 1.0f;
     float constexpr viewport_height = 2.0f;
     float constexpr viewport_width =
@@ -229,8 +230,9 @@ int main() {
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(camera), &camera);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+        glClearTexImage(frame, 0, GL_RGBA, GL_FLOAT, nullptr);
         glUseProgram(raytracer_program);
-        glDispatchCompute(FRAME_WIDTH, FRAME_HEIGHT, 1);
+        glDispatchCompute(FRAME_WIDTH, FRAME_HEIGHT, SAMPLE_PER_PIXEL);
 
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

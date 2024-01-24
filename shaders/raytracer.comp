@@ -63,6 +63,16 @@ vec4 gradient_background(const in vec4 top_color,
     return a * top_color + (1.0 - a) * bottom_color;
 }
 
+float rand_01(const in vec2 co){
+  return fract(sin(dot(co,vec2(12.9898,78.233))) * 43758.5453);
+}
+
+float rand_interval(const in vec2 co,
+                    const in float min,
+                    const in float max) {
+    return min + (max - min) * rand_01(co);
+}
+
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(rgba32f, binding = 0) uniform image2D img_output;
@@ -87,9 +97,14 @@ void main() {
     const vec3 camera_position = vec3(camera_position_val[0], camera_position_val[1], camera_position_val[2]);
 
     const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
+    const float sample_offset_x = -0.5 + rand_01(gl_GlobalInvocationID.xz);
+    const float sample_offset_y = -0.5 + rand_01(gl_GlobalInvocationID.yz);
+    const vec3 pixel_sample_offset = sample_offset_x * pixel_delta_u + 
+                                     sample_offset_y * pixel_delta_v;
     const vec3 pixel = upper_left_pixel + 
                  tex_coord.x * pixel_delta_u + 
-                 (gl_NumWorkGroups.y - tex_coord.y) * pixel_delta_v;
+                 (gl_NumWorkGroups.y - tex_coord.y) * pixel_delta_v +
+                 pixel_sample_offset;
     const ray_t ray = ray_t(camera_position, normalize(pixel - camera_position));
 
     const float t_min = 0.0;
@@ -106,6 +121,8 @@ void main() {
     const vec4 background_color = gradient_background(vec4(0.5, 0.7, 1.0, 1.0), 
                                                       vec4(1.0, 1.0, 1.0, 1.0),
                                                       ray);
-    const vec4 final = hit_anything * sphere_color + (1.0 - hit_anything) * background_color;
-    imageStore(img_output, tex_coord, final);
+    const vec4 final_color = hit_anything * sphere_color + 
+                             (1.0 - hit_anything) * background_color;
+    const vec4 stored = imageLoad(img_output, tex_coord);
+    imageStore(img_output, tex_coord, stored + final_color / float(gl_NumWorkGroups.z));
 }
