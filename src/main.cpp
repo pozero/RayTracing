@@ -173,7 +173,7 @@ int main() {
     glBindBufferRange(
         GL_UNIFORM_BUFFER, 1, sphere_buffer, 0, SPHERE_BUFFER_SIZE);
 
-    int constexpr SAMPLE_PER_PIXEL = 6;
+    int constexpr SAMPLE_PER_PIXEL = 4;
     float constexpr focal_length = 1.0f;
     float constexpr viewport_height = 2.0f;
     float constexpr viewport_width =
