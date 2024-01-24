@@ -10,16 +10,29 @@
 #include "glm/gtc/type_ptr.hpp"
 #pragma clang diagnostic pop
 
-#define LAMBERTIAN_MATERIAL 0
-#define METAL_MATERIAL 1
+#define MATERIAL_LAMBERTIAN 0
+#define MATERIAL_METAL 1
+#define MATERIAL_DIELECTRIC 2
 
-#pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
 struct material {
     int type;
     alignas(sizeof(glm::vec4)) glm::vec3 albedo;
     float fuzz;
+    float refraction_index;
 };
+
+inline material lambertian_material(glm::vec3 const &albedo) {
+    return material{MATERIAL_LAMBERTIAN, albedo, 0.0f, 0.0f};
+}
+
+inline material metal_material(glm::vec3 const &albedo, float fuzz) {
+    return material{MATERIAL_METAL, albedo, fuzz, 0.0f};
+}
+
+inline material dielectric_material(float refraction_index) {
+    return material{MATERIAL_DIELECTRIC, {}, 0.0f, refraction_index};
+}
 
 struct sphere {
     glm::vec3 center;
@@ -33,7 +46,6 @@ struct camera {
     alignas(sizeof(glm::vec4)) glm::vec3 upper_left_pixel;
     alignas(sizeof(glm::vec4)) glm::vec3 camera_position;
 };
-#pragma clang diagnostic pop
 
 static int window_width = 800;
 static int window_height = 600;
@@ -168,22 +180,10 @@ int main() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, camera_buffer, 0, sizeof(camera));
 
-    material material_ground{
-        LAMBERTIAN_MATERIAL, glm::vec3{0.8f, 0.8f, 0.0f},
-         0.0f
-    };
-    material material_center{
-        LAMBERTIAN_MATERIAL, glm::vec3{0.7f, 0.3f, 0.3f},
-         0.0f
-    };
-    material material_left{
-        METAL_MATERIAL, glm::vec3{0.8f, 0.8f, 0.8f},
-         0.3f
-    };
-    material material_right{
-        METAL_MATERIAL, glm::vec3{0.8f, 0.6f, 0.2f},
-         -1.0f
-    };
+    material material_ground = lambertian_material(glm::vec3{0.8f, 0.8f, 0.0f});
+    material material_center = lambertian_material(glm::vec3{0.1f, 0.2f, 0.5f});
+    material material_left = dielectric_material(1.5f);
+    material material_right = metal_material(glm::vec3{0.8f, 0.6f, 0.2f}, 0.3f);
     std::array spheres{
         sphere{glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f, material_ground},
         sphere{   glm::vec3{0.0f, 0.0f, -1.0f},   0.5f, material_center},
@@ -211,8 +211,9 @@ int main() {
     unsigned int raytracer_program = glCreateProgram();
     {
         unsigned int const raytracer =
-            load_spirv<1>("shaders/raytracer.comp.spv", GL_COMPUTE_SHADER, {0u},
-                {static_cast<unsigned int>(spheres.size())});
+            load_spirv("shaders/raytracer.comp.spv", GL_COMPUTE_SHADER);
+        // load_spirv<1>("shaders/raytracer.comp.spv", GL_COMPUTE_SHADER, {0u},
+        // {static_cast<unsigned int>(spheres.size())});
         glAttachShader(raytracer_program, raytracer);
         glLinkProgram(raytracer_program);
         check_link_error(raytracer_program);
