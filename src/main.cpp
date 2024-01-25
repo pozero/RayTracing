@@ -2,6 +2,7 @@
 #include <array>
 #include <vector>
 #include <fstream>
+#include <random>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Weverything"
@@ -48,12 +49,12 @@ struct glsl_camera_t {
     float accumulated_scalar;
 };
 
-int constexpr FRAME_WIDTH = 800;
-int constexpr FRAME_HEIGHT = 600;
+int constexpr FRAME_WIDTH = 1200;
+int constexpr FRAME_HEIGHT = 500;
 
 struct camera_t {
-    glm::vec3 position{-2.0f, 2.0f, 1.0f};
-    glm::vec3 lookat{0.0f, 0.0f, -1.0f};
+    glm::vec3 position{13.0f, 2.0f, 3.0f};
+    glm::vec3 lookat{0.0f, 0.0f, 0.0f};
     glm::vec3 relative_up{0.0f, 1.0f, 0.0f};
     glm::vec3 w;
     glm::vec3 u;
@@ -61,7 +62,7 @@ struct camera_t {
 
     uint64_t frame_counter = 1;
 
-    float vertical_field_of_view = 90.0f;
+    float vertical_field_of_view = 20.0f;
     float focal_length;
     float viewport_height;
     float viewport_width;
@@ -145,8 +146,8 @@ inline glsl_camera_t get_glsl_camera(camera_t const &camera) {
     };
 }
 
-static int window_width = 800;
-static int window_height = 600;
+static int window_width = FRAME_WIDTH;
+static int window_height = FRAME_HEIGHT;
 
 inline std::vector<char> read_binary_whole(std::string_view path) {
     std::ifstream ifs{path.data(), std::ios::binary | std::ios::ate};
@@ -304,20 +305,56 @@ int main() {
     glBindBufferRange(
         GL_UNIFORM_BUFFER, 0, camera_buffer, 0, sizeof(glsl_camera_t));
 
-    glsl_material_t material_ground =
-        lambertian_material(glm::vec3{0.8f, 0.8f, 0.0f});
-    glsl_material_t material_center =
-        lambertian_material(glm::vec3{0.1f, 0.2f, 0.5f});
-    glsl_material_t material_left = dielectric_material(1.5f);
-    glsl_material_t material_right =
-        metal_material(glm::vec3{0.8f, 0.6f, 0.2f}, 0.0f);
-    std::array spheres{
-        glsl_sphere_t{glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f, material_ground},
-        glsl_sphere_t{   glm::vec3{0.0f, 0.0f, -1.0f},   0.5f, material_center},
-        glsl_sphere_t{  glm::vec3{-1.0f, 0.0f, -1.0f},   0.5f,   material_left},
-        glsl_sphere_t{  glm::vec3{-1.0f, 0.0f, -1.0f},  -0.4f,   material_left},
-        glsl_sphere_t{   glm::vec3{1.0f, 0.0f, -1.0f},   0.5f,  material_right},
-    };
+    std::vector<glsl_sphere_t> spheres{};
+    spheres.push_back(glsl_sphere_t{
+        glm::vec3{0.0f, -1000.0f, 0.0f},
+        1000.0f,
+        lambertian_material(glm::vec3{0.5f,     0.5f, 0.5f}
+        ),
+    });
+    spheres.push_back(glsl_sphere_t{
+        glm::vec3{0.0f, 1.0f, 0.0f},
+        1.0f,
+        dielectric_material(1.5f),
+    });
+    spheres.push_back(glsl_sphere_t{
+        glm::vec3{-4.0f, 1.0f, 0.0f},
+        1.0f,
+        lambertian_material(glm::vec3{ 0.4f, 0.2f, 0.1f}
+        ),
+    });
+    spheres.push_back(glsl_sphere_t{
+        glm::vec3{4.0f, 1.0f, 0.0f},
+        1.0f,
+        metal_material(glm::vec3{0.7f, 0.6f, 0.5f},
+        0.0f),
+    });
+    std::random_device dev{};
+    std::mt19937 rng{dev()};
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    for (int a = -11; a < 11; ++a) {
+        for (int b = -11; b < 11; ++b) {
+            float const choose_material = dist(rng);
+            glm::vec3 const center{static_cast<float>(a) + 0.9f * dist(rng),
+                0.2f, static_cast<float>(b) + 0.9f * dist(rng)};
+            if (glm::distance(center, glm::vec3{4.0f, 0.2f, 0.0f}) > 0.9f) {
+                glsl_material_t material{
+                    0,
+                    glm::vec3{dist(rng), dist(rng), dist(rng)},
+                    0.5f * dist(rng),
+                    1.5f,
+                };
+                if (choose_material < 0.8f) {
+                    material.type = MATERIAL_LAMBERTIAN;
+                } else if (choose_material < 0.95f) {
+                    material.type = MATERIAL_METAL;
+                } else {
+                    material.type = MATERIAL_DIELECTRIC;
+                }
+                spheres.push_back(glsl_sphere_t{center, 0.2f, material});
+            }
+        }
+    }
 
     unsigned int const sphere_buffer_size =
         static_cast<unsigned int>(sizeof(glsl_sphere_t) * spheres.size());
