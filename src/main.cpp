@@ -15,37 +15,95 @@
 #define MATERIAL_DIELECTRIC 2
 
 #pragma clang diagnostic ignored "-Wpadded"
-struct material {
+struct glsl_material_t {
     int type;
     alignas(sizeof(glm::vec4)) glm::vec3 albedo;
     float fuzz;
     float refraction_index;
 };
 
-inline material lambertian_material(glm::vec3 const &albedo) {
-    return material{MATERIAL_LAMBERTIAN, albedo, 0.0f, 0.0f};
+inline glsl_material_t lambertian_material(glm::vec3 const &albedo) {
+    return glsl_material_t{MATERIAL_LAMBERTIAN, albedo, 0.0f, 0.0f};
 }
 
-inline material metal_material(glm::vec3 const &albedo, float fuzz) {
-    return material{MATERIAL_METAL, albedo, fuzz, 0.0f};
+inline glsl_material_t metal_material(glm::vec3 const &albedo, float fuzz) {
+    return glsl_material_t{MATERIAL_METAL, albedo, fuzz, 0.0f};
 }
 
-inline material dielectric_material(float refraction_index) {
-    return material{MATERIAL_DIELECTRIC, {}, 0.0f, refraction_index};
+inline glsl_material_t dielectric_material(float refraction_index) {
+    return glsl_material_t{MATERIAL_DIELECTRIC, {}, 0.0f, refraction_index};
 }
 
-struct sphere {
+struct glsl_sphere_t {
     glm::vec3 center;
     float radius;
-    material material;
+    glsl_material_t material;
 };
 
-struct camera {
+struct glsl_camera_t {
     alignas(sizeof(glm::vec4)) glm::vec3 pixel_delta_u;
     alignas(sizeof(glm::vec4)) glm::vec3 pixel_delta_v;
     alignas(sizeof(glm::vec4)) glm::vec3 upper_left_pixel;
     alignas(sizeof(glm::vec4)) glm::vec3 camera_position;
+    float accumulated_scalar;
 };
+
+int constexpr FRAME_WIDTH = 800;
+int constexpr FRAME_HEIGHT = 600;
+
+struct camera_t {
+    glm::vec3 position{0.0f, 0.0f, -1.0f};
+    glm::vec3 lookat{0.0f, 0.0f, 0.0f};
+    glm::vec3 relative_up{0.0f, 1.0f, 0.0f};
+    glm::vec3 w;
+    glm::vec3 u;
+    glm::vec3 v;
+
+    uint64_t frame_counter = 0;
+
+    float vertical_field_of_view = 20.0f;
+    float focal_length;
+    float viewport_height;
+    float viewport_width;
+
+    bool dirty = false;
+};
+
+inline camera_t create_camera() {
+    camera_t camera{};
+    camera.w = glm::normalize(camera.position - camera.lookat);
+    camera.u = glm::normalize(glm::cross(camera.relative_up, camera.w));
+    camera.v = glm::cross(camera.w, camera.u);
+    camera.focal_length = glm::distance(camera.position, camera.lookat);
+    float const theta = glm::radians(camera.vertical_field_of_view);
+    camera.viewport_height = 2 * std::tan(theta / 2);
+    camera.viewport_width =
+        camera.viewport_height *
+        (static_cast<float>(FRAME_WIDTH) / static_cast<float>(FRAME_HEIGHT));
+    return camera;
+}
+
+inline glsl_camera_t get_glsl_camera(camera_t const &camera) {
+    glm::vec3 const viewport_u = camera.viewport_width * camera.u;
+    glm::vec3 const viewport_v = camera.viewport_height * camera.v;
+    glm::vec3 const pixel_delta_u =
+        viewport_u / static_cast<float>(FRAME_WIDTH);
+    glm::vec3 const pixel_delta_v =
+        viewport_v / static_cast<float>(FRAME_HEIGHT);
+    glm::vec3 const viewport_upper_left = camera.position -
+                                          camera.focal_length * camera.w -
+                                          0.5f * (viewport_u + viewport_v);
+    glm::vec3 const upper_left_pixel =
+        viewport_upper_left + 0.5f * (pixel_delta_u + pixel_delta_v);
+    float accumulated_scalar = 1.0f / static_cast<float>(camera.frame_counter);
+    return glsl_camera_t{
+        pixel_delta_u,
+        pixel_delta_v,
+        upper_left_pixel,
+        camera.position,
+        accumulated_scalar,
+    };
+}
 
 static int window_width = 800;
 static int window_height = 600;
@@ -157,8 +215,6 @@ int main() {
     glViewport(0, 0, window_width, window_height);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    int constexpr FRAME_WIDTH = 800;
-    int constexpr FRAME_HEIGHT = 600;
     unsigned int frame = 0;
     glGenTextures(1, &frame);
     glActiveTexture(GL_TEXTURE0);
@@ -176,22 +232,28 @@ int main() {
     unsigned int camera_buffer = 0;
     glGenBuffers(1, &camera_buffer);
     glBindBuffer(GL_UNIFORM_BUFFER, camera_buffer);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(camera), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(
+        GL_UNIFORM_BUFFER, sizeof(glsl_camera_t), nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    glBindBufferRange(GL_UNIFORM_BUFFER, 0, camera_buffer, 0, sizeof(camera));
+    glBindBufferRange(
+        GL_UNIFORM_BUFFER, 0, camera_buffer, 0, sizeof(glsl_camera_t));
 
-    material material_ground = lambertian_material(glm::vec3{0.8f, 0.8f, 0.0f});
-    material material_center = lambertian_material(glm::vec3{0.1f, 0.2f, 0.5f});
-    material material_left = dielectric_material(1.5f);
-    material material_right = metal_material(glm::vec3{0.8f, 0.6f, 0.2f}, 0.3f);
+    glsl_material_t material_ground =
+        lambertian_material(glm::vec3{0.8f, 0.8f, 0.0f});
+    glsl_material_t material_center =
+        lambertian_material(glm::vec3{0.1f, 0.2f, 0.5f});
+    glsl_material_t material_left = dielectric_material(1.5f);
+    glsl_material_t material_right =
+        metal_material(glm::vec3{0.8f, 0.6f, 0.2f}, 0.0f);
     std::array spheres{
-        sphere{glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f, material_ground},
-        sphere{   glm::vec3{0.0f, 0.0f, -1.0f},   0.5f, material_center},
-        sphere{  glm::vec3{-1.0f, 0.0f, -1.0f},   0.5f,   material_left},
-        sphere{   glm::vec3{1.0f, 0.0f, -1.0f},   0.5f,  material_right},
+        glsl_sphere_t{glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f, material_ground},
+        glsl_sphere_t{   glm::vec3{0.0f, 0.0f, -1.0f},   0.5f, material_center},
+        glsl_sphere_t{  glm::vec3{-1.0f, 0.0f, -1.0f},   0.5f,   material_left},
+        glsl_sphere_t{  glm::vec3{-1.0f, 0.0f, -1.0f},  -0.4f,   material_left},
+        glsl_sphere_t{   glm::vec3{1.0f, 0.0f, -1.0f},   0.5f,  material_right},
     };
     unsigned int constexpr SPHERE_BUFFER_SIZE =
-        static_cast<unsigned int>(sizeof(sphere) * spheres.size());
+        static_cast<unsigned int>(sizeof(glsl_sphere_t) * spheres.size());
     unsigned int sphere_buffer = 0;
     glGenBuffers(1, &sphere_buffer);
     glBindBuffer(GL_UNIFORM_BUFFER, sphere_buffer);
@@ -211,9 +273,8 @@ int main() {
     unsigned int raytracer_program = glCreateProgram();
     {
         unsigned int const raytracer =
-            load_spirv("shaders/raytracer.comp.spv", GL_COMPUTE_SHADER);
-        // load_spirv<1>("shaders/raytracer.comp.spv", GL_COMPUTE_SHADER, {0u},
-        // {static_cast<unsigned int>(spheres.size())});
+            load_spirv<1>("shaders/raytracer.comp.spv", GL_COMPUTE_SHADER, {0u},
+                {static_cast<unsigned int>(spheres.size())});
         glAttachShader(raytracer_program, raytracer);
         glLinkProgram(raytracer_program);
         check_link_error(raytracer_program);
@@ -234,6 +295,7 @@ int main() {
         glDeleteShader(frag);
     }
 
+    uint64_t frame_counter = 1;
     while (glfwWindowShouldClose(window) == 0) {
         processInput(window);
 
@@ -248,17 +310,21 @@ int main() {
             0.5f * (viewport_u + viewport_v);
         glm::vec3 const upper_left_pixel =
             viewport_upper_left + 0.5f * (pixel_delta_v + pixel_delta_u);
-        camera const camera{
+        float const accumulated_scalar =
+            1.0f / static_cast<float>(frame_counter);
+        glsl_camera_t const glsl_camera{
             pixel_delta_u,
             pixel_delta_v,
             upper_left_pixel,
             camera_position,
+            accumulated_scalar,
         };
         glBindBuffer(GL_UNIFORM_BUFFER, camera_buffer);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(camera), &camera);
+        glBufferSubData(
+            GL_UNIFORM_BUFFER, 0, sizeof(glsl_camera), &glsl_camera);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        ++frame_counter;
 
-        // glClearTexImage(frame, 0, GL_RGBA, GL_FLOAT, nullptr);
         glUseProgram(raytracer_program);
         glDispatchCompute(FRAME_WIDTH, FRAME_HEIGHT, 1);
 

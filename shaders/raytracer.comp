@@ -5,7 +5,6 @@
 #define PI 3.1415926535
 
 #define RAY_BOUNCE_MAX_COUNT 10
-#define PIXEL_SAMPLE_COUNT 50
 
 struct ray_t {
     vec3 origin;
@@ -77,9 +76,12 @@ bool hit_sphere(const in sphere_t sphere,
     if (discriminant < 0.0) {
         return false;
     } else {
-        const float t = (-half_b - sqrt(discriminant)) / a;
+        float t = (-half_b - sqrt(discriminant)) / a;
         if (t < t_min || t > t_max) {
-            return false;
+            t = (-half_b + sqrt(discriminant)) / a;
+            if (t < t_min || t > t_max) {
+                return false;
+            }
         }
         record.t = t;
         record.point = ray_at(ray, record.t);
@@ -139,10 +141,6 @@ vec3 rand_vector_on_hemisphere(const in vec2 v1,
     const vec3 random_unit_vector = rand_vector_on_unit_sphere(v1, v2);
     return dot(random_unit_vector, normal) <= 0.0 ? -random_unit_vector : 
                                                     random_unit_vector;
-}
-
-vec3 gamma_correct(const in vec3 value) {
-    return sqrt(value);
 }
 
 bool near_zero(const in vec3 vector) {
@@ -206,7 +204,8 @@ vec3 scatter(inout ray_t ray,
                 hit_record.material.refraction_index;
             const float cos_theta = min(dot(-ray.direction, hit_record.normal), 1.0);
             const float sin_theta = sqrt(1 - cos_theta * cos_theta);
-            if (refraction_ratio * sin_theta > 1.0) {
+            if (refraction_ratio * sin_theta > 1.0 ||
+                reflectance(cos_theta, refraction_ratio) > rand_01(hit_record.point.xy)) {
                 ray.direction = reflect(ray.direction, hit_record.normal);
             } else {
                 ray.direction = refract(ray.direction, 
@@ -228,10 +227,11 @@ layout(std430, binding = 0) uniform camera {
     vec3 pixel_delta_v;
     vec3 upper_left_pixel;
     vec3 camera_position;
+    float accumulated_scalar;
 };
 
 layout(std430, binding = 1) uniform geometries_sphere {
-    sphere_t spheres[4];
+    sphere_t spheres[SPHERE_COUNT];
 };
 
 void main() {
@@ -240,41 +240,41 @@ void main() {
                  tex_coord.x * pixel_delta_u + 
                  (gl_NumWorkGroups.y - tex_coord.y) * pixel_delta_v;
 
-    vec3 accumulated_color = vec3(0.0, 0.0, 0.0);
-    for (int si = 0; si < PIXEL_SAMPLE_COUNT; ++ si) {
-        const float sample_offset_x = -0.5 + rand_01(vec2(gl_GlobalInvocationID.x, float(si)));
-        const float sample_offset_y = -0.5 + rand_01(vec2(gl_GlobalInvocationID.y, float(si)));
-        const vec3 pixel_sample_offset = sample_offset_x * pixel_delta_u + 
-                                         sample_offset_y * pixel_delta_v;
-        const vec3 pixel_sample = pixel + pixel_sample_offset;
-        ray_t ray = ray_t(camera_position, normalize(pixel_sample - camera_position));
-        
-        vec3 accumulated_attenuation = vec3(1.0, 1.0, 1.0);
-        for (int iter = 0; iter < RAY_BOUNCE_MAX_COUNT; ++ iter) {
-            const float t_min = 0.001;
-            float t_max = 1.0 / 0.0;
-            hit_record_t hit_record = empty_hit_record();
-            bool hit_anything = false;
-            for (int sphere_idx = 0; sphere_idx < 4; ++ sphere_idx) {
-                if (hit_sphere(spheres[sphere_idx], ray, t_min, t_max, hit_record)) {
-                    t_max = hit_record.t;
-                    hit_anything = true;
-                }
-            }
-            if (hit_anything) {
-                const vec3 attenuation = scatter(ray, hit_record);
-                accumulated_attenuation = attenuation * accumulated_attenuation;
-            } else {
-                const vec3 background_color = gradient_background(vec3(0.5, 0.7, 1.0), 
-                                                                  vec3(1.0, 1.0, 1.0),
-                                                                  ray);
-                accumulated_color += accumulated_attenuation * background_color;
-                break;
+    const float sample_offset_x = -0.5 + rand_01(vec2(gl_GlobalInvocationID.x, accumulated_scalar));
+    const float sample_offset_y = -0.5 + rand_01(vec2(gl_GlobalInvocationID.y, 1.0f - accumulated_scalar));
+    const vec3 pixel_sample_offset = sample_offset_x * pixel_delta_u + 
+                                     sample_offset_y * pixel_delta_v;
+    const vec3 pixel_sample = pixel + pixel_sample_offset;
+    ray_t ray = ray_t(camera_position, normalize(pixel_sample - camera_position));
+    
+    vec3 destination_color = vec3(0.0, 0.0, 0.0);
+    vec3 accumulated_attenuation = vec3(1.0, 1.0, 1.0);
+    #pragma optionNV (unroll all)
+    for (int iter = 0; iter < RAY_BOUNCE_MAX_COUNT; ++ iter) {
+        const float t_min = 0.001;
+        float t_max = 1.0 / 0.0;
+        hit_record_t hit_record = empty_hit_record();
+        bool hit_anything = false;
+        #pragma optionNV (unroll all)
+        for (int sphere_idx = 0; sphere_idx < SPHERE_COUNT; ++ sphere_idx) {
+            if (hit_sphere(spheres[sphere_idx], ray, t_min, t_max, hit_record)) {
+                t_max = hit_record.t;
+                hit_anything = true;
             }
         }
+        if (hit_anything) {
+            const vec3 attenuation = scatter(ray, hit_record);
+            accumulated_attenuation = attenuation * accumulated_attenuation;
+        } else {
+            const vec3 background_color = gradient_background(vec3(0.5, 0.7, 1.0), 
+                                                              vec3(1.0, 1.0, 1.0),
+                                                              ray);
+            destination_color += accumulated_attenuation * background_color;
+            break;
+        }
     }
-    accumulated_color = accumulated_color * (1.0 / float(PIXEL_SAMPLE_COUNT));
+    const vec3 source_color = imageLoad(img_output, tex_coord).xyz;
     imageStore(img_output, 
                tex_coord, 
-               vec4(gamma_correct(accumulated_color), 1.0));
+               vec4(source_color + destination_color, 1.0));
 }
