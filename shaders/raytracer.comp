@@ -238,7 +238,7 @@ void main() {
     const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
     const vec3 pixel = upper_left_pixel + 
                  tex_coord.x * pixel_delta_u + 
-                 (gl_NumWorkGroups.y - tex_coord.y) * pixel_delta_v;
+                 tex_coord.y * pixel_delta_v;
 
     const float sample_offset_x = -0.5 + rand_01(vec2(gl_GlobalInvocationID.x, accumulated_scalar));
     const float sample_offset_y = -0.5 + rand_01(vec2(gl_GlobalInvocationID.y, 1.0f - accumulated_scalar));

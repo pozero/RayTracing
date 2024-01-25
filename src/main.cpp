@@ -52,19 +52,25 @@ int constexpr FRAME_WIDTH = 800;
 int constexpr FRAME_HEIGHT = 600;
 
 struct camera_t {
-    glm::vec3 position{0.0f, 0.0f, -1.0f};
-    glm::vec3 lookat{0.0f, 0.0f, 0.0f};
+    glm::vec3 position{-2.0f, 2.0f, 1.0f};
+    glm::vec3 lookat{0.0f, 0.0f, -1.0f};
     glm::vec3 relative_up{0.0f, 1.0f, 0.0f};
     glm::vec3 w;
     glm::vec3 u;
     glm::vec3 v;
 
-    uint64_t frame_counter = 0;
+    uint64_t frame_counter = 1;
 
-    float vertical_field_of_view = 20.0f;
+    float vertical_field_of_view = 90.0f;
     float focal_length;
     float viewport_height;
     float viewport_width;
+
+    float pitch;
+    float yaw;
+
+    float sensitivity = 0.01f;
+    float velocity = 1.0f;
 
     bool dirty = false;
 };
@@ -74,13 +80,47 @@ inline camera_t create_camera() {
     camera.w = glm::normalize(camera.position - camera.lookat);
     camera.u = glm::normalize(glm::cross(camera.relative_up, camera.w));
     camera.v = glm::cross(camera.w, camera.u);
-    camera.focal_length = glm::distance(camera.position, camera.lookat);
-    float const theta = glm::radians(camera.vertical_field_of_view);
-    camera.viewport_height = 2 * std::tan(theta / 2);
+    camera.focal_length = 1.0f;
+    camera.viewport_height =
+        2 * glm::tan(glm::radians(camera.vertical_field_of_view) / 2) *
+        camera.focal_length;
     camera.viewport_width =
         camera.viewport_height *
         (static_cast<float>(FRAME_WIDTH) / static_cast<float>(FRAME_HEIGHT));
+    camera.pitch = std::asin(camera.w[1]);
+    camera.yaw = std::asin(camera.w[2] / std::cos(camera.pitch));
     return camera;
+}
+
+inline void camera_rotate(
+    camera_t &camera, float cursor_x, float cursor_y, bool holding) {
+    static float last_cursor_x = cursor_x;
+    static float last_cursor_y = cursor_y;
+    if (holding) {
+        float const offset_x = last_cursor_x - cursor_x;
+        float const offset_y = last_cursor_y - cursor_y;
+        camera.yaw += camera.sensitivity * offset_x;
+        float const updated_pitch =
+            camera.pitch + camera.sensitivity * offset_y;
+        if (updated_pitch > -89.0f && updated_pitch < 89.0f) {
+            camera.pitch = updated_pitch;
+        }
+        camera.w[0] = std::cos(camera.yaw) * std::cos(camera.pitch);
+        camera.w[1] = std::sin(camera.pitch);
+        camera.w[2] = std::sin(camera.yaw) * std::cos(camera.pitch);
+        camera.u = glm::normalize(glm::cross(camera.relative_up, camera.w));
+        camera.v = glm::cross(camera.w, camera.u);
+        camera.dirty = true;
+    }
+    last_cursor_x = cursor_x;
+    last_cursor_y = cursor_y;
+}
+
+inline void camera_move(
+    camera_t &camera, float delta_time, float along_minus_z, float along_x) {
+    camera.position += camera.velocity * delta_time *
+                       (along_minus_z * -(camera.w) + along_x * camera.u);
+    camera.dirty = true;
 }
 
 inline glsl_camera_t get_glsl_camera(camera_t const &camera) {
@@ -184,9 +224,35 @@ inline void framebuffer_size_callback(
     glViewport(0, 0, width, height);
 }
 
-inline void processInput(GLFWwindow *window) {
+inline void process_input(
+    GLFWwindow *window, camera_t &camera, float delta_time) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, 1);
+    }
+    bool const mouse_left_button_clicked =
+        glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    double cursor_x = 0.0;
+    double cursor_y = 0.0;
+    glfwGetCursorPos(window, &cursor_x, &cursor_y);
+    camera_rotate(camera, static_cast<float>(cursor_x),
+        static_cast<float>(cursor_y), mouse_left_button_clicked);
+
+    float along_minus_z = 0.0f;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        along_minus_z += 1.0f;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        along_minus_z -= 1.0f;
+    }
+    float along_x = 0.0f;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        along_x += 1.0f;
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        along_x -= 1.0f;
+    }
+    if (along_minus_z != 0.0f || along_x != 0.0f) {
+        camera_move(camera, delta_time, along_minus_z, along_x);
     }
 }
 
@@ -252,23 +318,19 @@ int main() {
         glsl_sphere_t{  glm::vec3{-1.0f, 0.0f, -1.0f},  -0.4f,   material_left},
         glsl_sphere_t{   glm::vec3{1.0f, 0.0f, -1.0f},   0.5f,  material_right},
     };
-    unsigned int constexpr SPHERE_BUFFER_SIZE =
+
+    unsigned int const sphere_buffer_size =
         static_cast<unsigned int>(sizeof(glsl_sphere_t) * spheres.size());
     unsigned int sphere_buffer = 0;
     glGenBuffers(1, &sphere_buffer);
     glBindBuffer(GL_UNIFORM_BUFFER, sphere_buffer);
     glBufferData(
-        GL_UNIFORM_BUFFER, SPHERE_BUFFER_SIZE, spheres.data(), GL_STATIC_DRAW);
+        GL_UNIFORM_BUFFER, sphere_buffer_size, spheres.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferRange(
-        GL_UNIFORM_BUFFER, 1, sphere_buffer, 0, SPHERE_BUFFER_SIZE);
+        GL_UNIFORM_BUFFER, 1, sphere_buffer, 0, sphere_buffer_size);
 
-    float constexpr focal_length = 1.0f;
-    float constexpr viewport_height = 2.0f;
-    float constexpr viewport_width =
-        viewport_height *
-        (static_cast<float>(FRAME_WIDTH) / static_cast<float>(FRAME_HEIGHT));
-    glm::vec3 const camera_position{0.0f, 0.0f, 0.0f};
+    camera_t camera = create_camera();
 
     unsigned int raytracer_program = glCreateProgram();
     {
@@ -295,35 +357,24 @@ int main() {
         glDeleteShader(frag);
     }
 
-    uint64_t frame_counter = 1;
+    float last_time = static_cast<float>(glfwGetTime());
     while (glfwWindowShouldClose(window) == 0) {
-        processInput(window);
+        float const current_time = static_cast<float>(glfwGetTime());
+        float const delta_time = current_time - last_time;
+        last_time = current_time;
+        process_input(window, camera, delta_time);
 
-        glm::vec3 const viewport_u{viewport_width, 0.0f, 0.0f};
-        glm::vec3 const viewport_v{0.0f, -viewport_height, 0.0f};
-        glm::vec3 const pixel_delta_u =
-            viewport_u / static_cast<float>(FRAME_WIDTH);
-        glm::vec3 const pixel_delta_v =
-            viewport_v / static_cast<float>(FRAME_HEIGHT);
-        glm::vec3 const viewport_upper_left =
-            camera_position - glm::vec3{0.0f, 0.0f, focal_length} -
-            0.5f * (viewport_u + viewport_v);
-        glm::vec3 const upper_left_pixel =
-            viewport_upper_left + 0.5f * (pixel_delta_v + pixel_delta_u);
-        float const accumulated_scalar =
-            1.0f / static_cast<float>(frame_counter);
-        glsl_camera_t const glsl_camera{
-            pixel_delta_u,
-            pixel_delta_v,
-            upper_left_pixel,
-            camera_position,
-            accumulated_scalar,
-        };
+        if (camera.dirty) {
+            camera.dirty = false;
+            camera.frame_counter = 1;
+            glClearTexImage(frame, 0, GL_RGBA, GL_FLOAT, nullptr);
+        }
+        glsl_camera_t const glsl_camera = get_glsl_camera(camera);
+        ++camera.frame_counter;
         glBindBuffer(GL_UNIFORM_BUFFER, camera_buffer);
         glBufferSubData(
             GL_UNIFORM_BUFFER, 0, sizeof(glsl_camera), &glsl_camera);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
-        ++frame_counter;
 
         glUseProgram(raytracer_program);
         glDispatchCompute(FRAME_WIDTH, FRAME_HEIGHT, 1);
