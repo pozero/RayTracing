@@ -3,12 +3,18 @@
 #include <vector>
 #include <fstream>
 #include <random>
+#include <utility>
+#include <limits>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Weverything"
 #include "glad/glad.h"
 #include "GLFW/glfw3.h"
 #include "glm/gtc/type_ptr.hpp"
+#include "stb_image_write.h"
 #pragma clang diagnostic pop
 
 #define MATERIAL_LAMBERTIAN 0
@@ -23,23 +29,78 @@ struct glsl_material_t {
     float refraction_index;
 };
 
-inline glsl_material_t lambertian_material(glm::vec3 const &albedo) {
+inline glsl_material_t material_lambertian(glm::vec3 const &albedo) {
     return glsl_material_t{MATERIAL_LAMBERTIAN, albedo, 0.0f, 0.0f};
 }
 
-inline glsl_material_t metal_material(glm::vec3 const &albedo, float fuzz) {
+inline glsl_material_t material_metal(glm::vec3 const &albedo, float fuzz) {
     return glsl_material_t{MATERIAL_METAL, albedo, fuzz, 0.0f};
 }
 
-inline glsl_material_t dielectric_material(float refraction_index) {
+inline glsl_material_t material_dielectric(float refraction_index) {
     return glsl_material_t{MATERIAL_DIELECTRIC, {}, 0.0f, refraction_index};
+}
+
+struct glsl_aabb_t {
+    glm::vec2 x_interval;
+    glm::vec2 y_interval;
+    glm::vec2 z_interval;
+};
+
+inline glsl_aabb_t empty_aabb() {
+    glm::vec2 const empty_interval{
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::min(),
+    };
+    return glsl_aabb_t{
+        empty_interval,
+        empty_interval,
+        empty_interval,
+    };
 }
 
 struct glsl_sphere_t {
     glm::vec3 center;
     float radius;
     glsl_material_t material;
+    glsl_aabb_t aabb;
 };
+
+inline glsl_sphere_t create_sphere(
+    glm::vec3 const &center, float radius, glsl_material_t const &material) {
+    return glsl_sphere_t{
+        .center = center,
+        .radius = radius,
+        .material = material,
+        .aabb =
+            glsl_aabb_t{
+                        glm::vec2{center[0] - radius, center[0] + radius},
+                        glm::vec2{center[1] - radius, center[1] + radius},
+                        glm::vec2{center[2] - radius, center[2] + radius},
+                        },
+    };
+}
+
+inline glsl_aabb_t aabb_union(
+    glsl_aabb_t const &box_a, glsl_aabb_t const &box_b) {
+    return glsl_aabb_t{
+        glm::vec2{std::min(box_a.x_interval[0], box_b.x_interval[0]),
+                  std::max(box_a.x_interval[1], box_b.x_interval[1])},
+        glm::vec2{std::min(box_a.y_interval[0], box_b.y_interval[0]),
+                  std::max(box_a.y_interval[1], box_b.y_interval[1])},
+        glm::vec2{std::min(box_a.z_interval[0], box_b.z_interval[0]),
+                  std::max(box_a.z_interval[1], box_b.z_interval[1])},
+    };
+}
+
+inline void set_world_aabb(std::vector<glsl_sphere_t> &spheres) {
+    glsl_aabb_t world_aabb = empty_aabb();
+    for (glsl_sphere_t const &sphere : spheres) {
+        world_aabb = aabb_union(world_aabb, sphere.aabb);
+    }
+    spheres.emplace_back(
+        glm::vec3{}, 0.0f, material_dielectric(0.0f), world_aabb);
+}
 
 struct glsl_camera_t {
     alignas(sizeof(glm::vec4)) glm::vec3 pixel_delta_u;
@@ -53,8 +114,8 @@ int constexpr FRAME_WIDTH = 1200;
 int constexpr FRAME_HEIGHT = 500;
 
 struct camera_t {
-    glm::vec3 position{13.0f, 2.0f, 3.0f};
-    glm::vec3 lookat{0.0f, 0.0f, 0.0f};
+    glm::vec3 position{-2.0f, 2.0f, 1.0f};
+    glm::vec3 lookat{0.0f, 0.0f, -1.0f};
     glm::vec3 relative_up{0.0f, 1.0f, 0.0f};
     glm::vec3 w;
     glm::vec3 u;
@@ -282,19 +343,19 @@ int main() {
     glViewport(0, 0, window_width, window_height);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    unsigned int frame = 0;
-    glGenTextures(1, &frame);
+    unsigned int accumulation_buffer = 0;
+    glGenTextures(1, &accumulation_buffer);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, frame);
+    glBindTexture(GL_TEXTURE_2D, accumulation_buffer);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, FRAME_WIDTH, FRAME_HEIGHT, 0,
         GL_RGBA, GL_FLOAT, nullptr);
-    glBindImageTexture(0, frame, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+    glBindImageTexture(
+        0, accumulation_buffer, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, frame);
 
     unsigned int camera_buffer = 0;
     glGenBuffers(1, &camera_buffer);
@@ -306,55 +367,50 @@ int main() {
         GL_UNIFORM_BUFFER, 0, camera_buffer, 0, sizeof(glsl_camera_t));
 
     std::vector<glsl_sphere_t> spheres{};
-    spheres.push_back(glsl_sphere_t{
-        glm::vec3{0.0f, -1000.0f, 0.0f},
-        1000.0f,
-        lambertian_material(glm::vec3{0.5f,     0.5f, 0.5f}
-        ),
-    });
-    spheres.push_back(glsl_sphere_t{
-        glm::vec3{0.0f, 1.0f, 0.0f},
-        1.0f,
-        dielectric_material(1.5f),
-    });
-    spheres.push_back(glsl_sphere_t{
-        glm::vec3{-4.0f, 1.0f, 0.0f},
-        1.0f,
-        lambertian_material(glm::vec3{ 0.4f, 0.2f, 0.1f}
-        ),
-    });
-    spheres.push_back(glsl_sphere_t{
-        glm::vec3{4.0f, 1.0f, 0.0f},
-        1.0f,
-        metal_material(glm::vec3{0.7f, 0.6f, 0.5f},
-        0.0f),
-    });
-    std::random_device dev{};
-    std::mt19937 rng{dev()};
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-    for (int a = -11; a < 11; ++a) {
-        for (int b = -11; b < 11; ++b) {
-            float const choose_material = dist(rng);
-            glm::vec3 const center{static_cast<float>(a) + 0.9f * dist(rng),
-                0.2f, static_cast<float>(b) + 0.9f * dist(rng)};
-            if (glm::distance(center, glm::vec3{4.0f, 0.2f, 0.0f}) > 0.9f) {
-                glsl_material_t material{
-                    0,
-                    glm::vec3{dist(rng), dist(rng), dist(rng)},
-                    0.5f * dist(rng),
-                    1.5f,
-                };
-                if (choose_material < 0.8f) {
-                    material.type = MATERIAL_LAMBERTIAN;
-                } else if (choose_material < 0.95f) {
-                    material.type = MATERIAL_METAL;
-                } else {
-                    material.type = MATERIAL_DIELECTRIC;
-                }
-                spheres.push_back(glsl_sphere_t{center, 0.2f, material});
-            }
-        }
-    }
+    spheres.push_back(create_sphere(glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f,
+        material_lambertian(glm::vec3{0.8f, 0.8f, 0.0f})));
+    spheres.push_back(create_sphere(glm::vec3{0.0f, 0.0f, -1.0f}, 0.5f,
+        material_lambertian(glm::vec3{0.1f, 0.2f, 0.5f})));
+    spheres.push_back(create_sphere(
+        glm::vec3{-1.0f, 0.0f, -1.0f}, 0.5f, material_dielectric(1.5f)));
+    spheres.push_back(create_sphere(
+        glm::vec3{-1.0f, 0.0f, -1.0f}, -0.4f, material_dielectric(1.5f)));
+    spheres.push_back(create_sphere(glm::vec3{1.0f, 0.0f, -1.0f}, 0.5f,
+        material_metal(glm::vec3{0.8f, 0.6f, 0.2f}, 0.3f)));
+    // spheres.push_back(create_sphere(glm::vec3{0.0f, -1000.0f, 0.0f}, 1000.0f,
+    //     material_lambertian(glm::vec3{0.5f, 0.5f, 0.5f})));
+    // spheres.push_back(create_sphere(
+    //     glm::vec3{0.0f, 1.0f, 0.0f}, 1.0f, material_dielectric(1.5f)));
+    // spheres.push_back(create_sphere(glm::vec3{-4.0f, 1.0f, 0.0f}, 1.0f,
+    //     material_lambertian(glm::vec3{0.4f, 0.2f, 0.1f})));
+    // spheres.push_back(create_sphere(glm::vec3{4.0f, 1.0f, 0.0f}, 1.0f,
+    //     material_metal(glm::vec3{0.7f, 0.6f, 0.5f}, 0.0f)));
+    // std::random_device dev{};
+    // std::mt19937 rng{dev()};
+    // std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    // for (int a = -11; a < 11; ++a) {
+    //     for (int b = -11; b < 11; ++b) {
+    //         float const choose_material = dist(rng);
+    //         glm::vec3 const center{static_cast<float>(a) + 0.9f * dist(rng),
+    //             0.2f, static_cast<float>(b) + 0.9f * dist(rng)};
+    //         if (glm::distance(center, glm::vec3{4.0f, 0.2f, 0.0f}) > 0.9f) {
+    //             glsl_material_t material{
+    //                 0,
+    //                 glm::vec3{dist(rng), dist(rng), dist(rng)},
+    //                 0.5f * dist(rng),
+    //                 1.5f,
+    //             };
+    //             if (choose_material < 0.8f) {
+    //                 material.type = MATERIAL_LAMBERTIAN;
+    //             } else if (choose_material < 0.95f) {
+    //                 material.type = MATERIAL_METAL;
+    //             } else {
+    //                 material.type = MATERIAL_DIELECTRIC;
+    //             }
+    //             spheres.push_back(create_sphere(center, 0.2f, material));
+    //         }
+    //     }
+    // }
 
     unsigned int const sphere_buffer_size =
         static_cast<unsigned int>(sizeof(glsl_sphere_t) * spheres.size());
@@ -404,7 +460,7 @@ int main() {
         if (camera.dirty) {
             camera.dirty = false;
             camera.frame_counter = 1;
-            glClearTexImage(frame, 0, GL_RGBA, GL_FLOAT, nullptr);
+            glClearTexImage(accumulation_buffer, 0, GL_RGBA, GL_FLOAT, nullptr);
         }
         glsl_camera_t const glsl_camera = get_glsl_camera(camera);
         ++camera.frame_counter;
@@ -427,6 +483,21 @@ int main() {
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+
+    std::vector<uint8_t> readback(
+        static_cast<size_t>(window_width * window_height * 4));
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glReadBuffer(GL_FRONT);
+    glReadPixels(0, 0, window_width, window_height, GL_RGBA, GL_UNSIGNED_BYTE,
+        readback.data());
+    stbi_flip_vertically_on_write(true);
+    auto time = std::time(nullptr);
+    auto tm = *std::localtime(&time);
+    std::ostringstream image_name{};
+    image_name << std::put_time(&tm, "%d-%m-%Y %H-%M-%S");
+    image_name << ".png";
+    stbi_write_png(image_name.str().c_str(), window_width, window_height, 4,
+        readback.data(), 4 * window_width);
 
     glfwDestroyWindow(window);
     glfwTerminate();

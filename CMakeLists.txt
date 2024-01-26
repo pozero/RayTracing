@@ -71,6 +71,7 @@ target_sources(Raytracing
     PRIVATE
         ${PROJECT_SOURCE_DIR}/src/main.cpp
         ${PROJECT_SOURCE_DIR}/src/glad_impl.cpp
+        ${PROJECT_SOURCE_DIR}/src/stb_image_write_impl.cpp
 )
 
 target_include_directories(Raytracing
@@ -79,6 +80,7 @@ target_include_directories(Raytracing
         ${PROJECT_SOURCE_DIR}/third_party/glfw/include
         ${PROJECT_SOURCE_DIR}/third_party/glad/include
         ${PROJECT_SOURCE_DIR}/third_party/glm
+        ${PROJECT_SOURCE_DIR}/third_party/stb
 )
 
 set(GLFW_BUILD_EXAMPLES OFF)

@@ -1,0 +1,48 @@
+#version 460
+
+#extension GL_EXT_scalar_block_layout: require
+
+#include "aabb.glsl"
+#include "material.glsl"
+#include "geometry.glsl"
+#include "uniform_grid.glsl"
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(constant_id = 4) const uint GRID_SPHERE_PAIR_COUNT = 1;
+
+layout(std430, binding = 1) uniform sphere_geometries {
+    sphere_t spheres[SPHERE_COUNT];
+};
+
+layout(std430, binding = 2) uniform acceleration_structure {
+    uniform_grid_t uniform_grid;
+    aabb_t world_aabb;
+};
+
+layout(std430, binding = 0) readonly buffer grid_start {
+    uint grid_sphere_intersection_start[SPHERE_COUNT + 1];
+};
+
+layout(std430, binding = 1) writeonly buffer intersection_pair {
+    uint grid_sphere_pair[2 * GRID_SPHERE_PAIR_COUNT];
+};
+
+void main() {
+    const uint working_index = gl_GlobalInvocationID.x;
+    const aabb_t aabb = spheres[working_index].aabb;
+    const vec3 lowest_point = aabb_lowest_point(aabb);
+    const vec3 highest_point = aabb_highest_point(aabb);
+    const ivec3 lowest_grid = world2grid(uniform_grid, lowest_point);
+    const ivec3 highest_grid = world2grid(uniform_grid, highest_point);
+    uint pair_index = grid_sphere_intersection_start[working_index];
+    for (int x = lowest_grid.x; x <= highest_grid.x; ++ x) {
+        for (int y = lowest_grid.y; y <= highest_grid.y; ++ y) {
+            for (int z = lowest_grid.z; z <= highest_grid.z; ++ z) {
+                grid_sphere_pair[2 * pair_index + 0] = flatten_grid_coord(ivec3(x, y, z));
+                grid_sphere_pair[2 * pair_index + 1] = working_index;
+                ++ pair_index;
+            }
+        }
+    }
+}
