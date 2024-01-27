@@ -30,13 +30,13 @@ bool aabb_intersect(const in aabb_t a,
 }
 
 vec3 aabb_lowest_point(const in aabb_t aabb) {
-    return vec3(world_aabb.x_interval.x,
-                world_aabb.y_interval.x,
-                world_aabb.z_interval.x);
+    return vec3(aabb.x_interval.x,
+                aabb.y_interval.x,
+                aabb.z_interval.x);
 }
 
 vec3 aabb_highest_point(const in aabb_t aabb) {
-    return vec3(world_aabb.x_interval.y,
-                world_aabb.y_interval.y,
-                world_aabb.z_interval.y);
+    return vec3(aabb.x_interval.y,
+                aabb.y_interval.y,
+                aabb.z_interval.y);
 }

@@ -2,11 +2,19 @@
 
 #extension GL_EXT_scalar_block_layout: require
 
+layout(constant_id = 0) const uint SPHERE_COUNT = 1;
+
+layout(constant_id = 1) const uint GRID_ALONG_X_AXIS = 1;
+
+layout(constant_id = 2) const uint GRID_ALONG_Y_AXIS = 1;
+
+layout(constant_id = 3) const uint GRID_ALONG_Z_AXIS = 1;
+
 #include "aabb.glsl"
 #include "material.glsl"
 #include "geometry.glsl"
 #include "random.glsl"
-#include "uniform_voxel.glsl"
+#include "uniform_grid.glsl"
 
 #define RAY_BOUNCE_MAX_COUNT 10
 

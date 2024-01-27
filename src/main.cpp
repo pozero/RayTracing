@@ -29,6 +29,17 @@ struct glsl_material_t {
     float refraction_index;
 };
 
+inline uint32_t rounded_up_to_power_2(uint32_t val) {
+    --val;
+    val |= val >> 1;
+    val |= val >> 2;
+    val |= val >> 4;
+    val |= val >> 8;
+    val |= val >> 16;
+    ++val;
+    return val;
+}
+
 inline glsl_material_t material_lambertian(glm::vec3 const &albedo) {
     return glsl_material_t{MATERIAL_LAMBERTIAN, albedo, 0.0f, 0.0f};
 }
@@ -59,6 +70,16 @@ inline glsl_aabb_t empty_aabb() {
     };
 }
 
+struct glsl_uniform_grid_t {
+    alignas(sizeof(glm::vec4)) glm::vec3 starting_point;
+    alignas(sizeof(glm::vec4)) glm::vec3 grid_size;
+};
+
+struct glsl_acceleration_structure_t {
+    glsl_uniform_grid_t uniform_grid;
+    glsl_aabb_t world_aabb;
+};
+
 struct glsl_sphere_t {
     glm::vec3 center;
     float radius;
@@ -74,9 +95,12 @@ inline glsl_sphere_t create_sphere(
         .material = material,
         .aabb =
             glsl_aabb_t{
-                        glm::vec2{center[0] - radius, center[0] + radius},
-                        glm::vec2{center[1] - radius, center[1] + radius},
-                        glm::vec2{center[2] - radius, center[2] + radius},
+                        glm::vec2{
+                        center[0] - std::abs(radius), center[0] + std::abs(radius)},
+                        glm::vec2{
+                        center[1] - std::abs(radius), center[1] + std::abs(radius)},
+                        glm::vec2{
+                        center[2] - std::abs(radius), center[2] + std::abs(radius)},
                         },
     };
 }
@@ -93,13 +117,31 @@ inline glsl_aabb_t aabb_union(
     };
 }
 
-inline void set_world_aabb(std::vector<glsl_sphere_t> &spheres) {
+inline glsl_aabb_t get_world_aabb(std::vector<glsl_sphere_t> const &spheres) {
     glsl_aabb_t world_aabb = empty_aabb();
     for (glsl_sphere_t const &sphere : spheres) {
         world_aabb = aabb_union(world_aabb, sphere.aabb);
     }
-    spheres.emplace_back(
-        glm::vec3{}, 0.0f, material_dielectric(0.0f), world_aabb);
+    return world_aabb;
+}
+
+inline glsl_uniform_grid_t create_uniform_grid(glsl_aabb_t const &world_aabb,
+    uint32_t grid_along_x, uint32_t grid_along_y, uint32_t grid_along_z) {
+    glm::vec3 const mu{1.0f, 1.0f, 1.0f};
+    glm::vec3 const starting_point =
+        glm::vec3{world_aabb.x_interval[0], world_aabb.y_interval[0],
+            world_aabb.z_interval[0]} -
+        mu;
+    glm::vec3 const inv_count =
+        glm::vec3{1.0f, 1.0f, 1.0f} /
+        glm::vec3{grid_along_x, grid_along_y, grid_along_z};
+    glm::vec3 const world_aabb_size =
+        glm::vec3{world_aabb.x_interval[1] - world_aabb.x_interval[0],
+            world_aabb.y_interval[1] - world_aabb.y_interval[0],
+            world_aabb.z_interval[1] - world_aabb.z_interval[0]} +
+        2.0f * mu;
+    glm::vec3 const grid_size = inv_count * world_aabb_size;
+    return glsl_uniform_grid_t{starting_point, grid_size};
 }
 
 struct glsl_camera_t {
@@ -367,8 +409,6 @@ int main() {
         GL_UNIFORM_BUFFER, 0, camera_buffer, 0, sizeof(glsl_camera_t));
 
     std::vector<glsl_sphere_t> spheres{};
-    spheres.push_back(create_sphere(glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f,
-        material_lambertian(glm::vec3{0.8f, 0.8f, 0.0f})));
     spheres.push_back(create_sphere(glm::vec3{0.0f, 0.0f, -1.0f}, 0.5f,
         material_lambertian(glm::vec3{0.1f, 0.2f, 0.5f})));
     spheres.push_back(create_sphere(
@@ -377,6 +417,8 @@ int main() {
         glm::vec3{-1.0f, 0.0f, -1.0f}, -0.4f, material_dielectric(1.5f)));
     spheres.push_back(create_sphere(glm::vec3{1.0f, 0.0f, -1.0f}, 0.5f,
         material_metal(glm::vec3{0.8f, 0.6f, 0.2f}, 0.3f)));
+    spheres.push_back(create_sphere(glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f,
+        material_lambertian(glm::vec3{0.8f, 0.8f, 0.0f})));
     // spheres.push_back(create_sphere(glm::vec3{0.0f, -1000.0f, 0.0f}, 1000.0f,
     //     material_lambertian(glm::vec3{0.5f, 0.5f, 0.5f})));
     // spheres.push_back(create_sphere(
@@ -423,9 +465,75 @@ int main() {
     glBindBufferRange(
         GL_UNIFORM_BUFFER, 1, sphere_buffer, 0, sphere_buffer_size);
 
+    uint32_t constexpr GRID_ALONG_X_AXIS = 3;
+    uint32_t constexpr GRID_ALONG_Y_AXIS = 3;
+    uint32_t constexpr GRID_ALONG_Z_AXIS = 3;
+
+    glsl_aabb_t const world_aabb = get_world_aabb(spheres);
+    glsl_uniform_grid_t const uniform_grid = create_uniform_grid(
+        world_aabb, GRID_ALONG_X_AXIS, GRID_ALONG_Y_AXIS, GRID_ALONG_Y_AXIS);
+    glsl_acceleration_structure_t const acceleration_structure{
+        uniform_grid, world_aabb};
+
+    unsigned int acceleration_structure_buffer = 0;
+    glGenBuffers(1, &acceleration_structure_buffer);
+    glBindBuffer(GL_UNIFORM_BUFFER, acceleration_structure_buffer);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(glsl_acceleration_structure_t),
+        &acceleration_structure, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    glBindBufferRange(GL_UNIFORM_BUFFER, 2, acceleration_structure_buffer, 0,
+        sizeof(glsl_acceleration_structure_t));
+
+    unsigned int intersection_start_buffer = 0;
+    long const intersection_start_buffer_size =
+        static_cast<long>(sizeof(uint32_t) * (spheres.size() + 1));
+    long const intersection_count_offset =
+        intersection_start_buffer_size - static_cast<long>(sizeof(uint32_t));
+    glGenBuffers(1, &intersection_start_buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_start_buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, intersection_start_buffer_size,
+        nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, intersection_start_buffer, 0,
+        intersection_start_buffer_size);
+
+    unsigned int intersection_record_buffer = 0;
+    long const intersection_record_buffer_max_size =
+        2 * rounded_up_to_power_2(
+                GRID_ALONG_X_AXIS * GRID_ALONG_Y_AXIS * GRID_ALONG_Z_AXIS *
+                static_cast<uint32_t>(spheres.size() * sizeof(uint32_t)));
+    glGenBuffers(1, &intersection_record_buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer_max_size,
+        nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    unsigned int sphere_grid_occupation_buffer = 0;
+    long const sphere_grid_occupation_buffer_size =
+        2 * static_cast<uint32_t>(sizeof(glm::ivec4) * spheres.size());
+    glGenBuffers(1, &sphere_grid_occupation_buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, sphere_grid_occupation_buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sphere_grid_occupation_buffer_size,
+        nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1,
+        sphere_grid_occupation_buffer, 0, sphere_grid_occupation_buffer_size);
+
     camera_t camera = create_camera();
 
-    unsigned int raytracer_program = glCreateProgram();
+    unsigned int const count_grid_program = glCreateProgram();
+    {
+        unsigned int const shader = load_spirv<4>("shaders/count_grid.comp.spv",
+            GL_COMPUTE_SHADER, {0, 1, 2, 3},
+            {static_cast<unsigned int>(spheres.size()), GRID_ALONG_X_AXIS,
+                GRID_ALONG_Y_AXIS, GRID_ALONG_Z_AXIS});
+        glAttachShader(count_grid_program, shader);
+        glLinkProgram(count_grid_program);
+        check_link_error(count_grid_program);
+        glDeleteShader(shader);
+    }
+
+    unsigned int const raytracer_program = glCreateProgram();
     {
         unsigned int const raytracer =
             load_spirv<1>("shaders/raytracer.comp.spv", GL_COMPUTE_SHADER, {0u},
@@ -436,7 +544,7 @@ int main() {
         glDeleteShader(raytracer);
     }
 
-    unsigned int rect_program = glCreateProgram();
+    unsigned int const rect_program = glCreateProgram();
     {
         unsigned int const vert =
             load_spirv("shaders/rect.vert.spv", GL_VERTEX_SHADER);
@@ -456,6 +564,57 @@ int main() {
         float const delta_time = current_time - last_time;
         last_time = current_time;
         process_input(window, camera, delta_time);
+
+        uint32_t constexpr ZERO = 0;
+        uint32_t constexpr MAX = std::numeric_limits<uint32_t>::max();
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_start_buffer);
+        glClearBufferData(
+            GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, &ZERO);
+
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glUseProgram(count_grid_program);
+        glDispatchCompute(static_cast<uint32_t>(spheres.size()), 1, 1);
+
+        uint32_t intersection_count = 0;
+        glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, intersection_count_offset,
+            sizeof(uint32_t), &intersection_count);
+        intersection_count = rounded_up_to_power_2(intersection_count);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+        unsigned int const write_grid_geometry_program = glCreateProgram();
+        {
+            unsigned int const shader = load_spirv<5>(
+                "shaders/write_grid_geometry.comp.spv", GL_COMPUTE_SHADER,
+                {0, 1, 2, 3, 4},
+                {static_cast<unsigned int>(spheres.size()), GRID_ALONG_X_AXIS,
+                    GRID_ALONG_Y_AXIS, GRID_ALONG_Z_AXIS, intersection_count});
+            glAttachShader(write_grid_geometry_program, shader);
+            glLinkProgram(write_grid_geometry_program);
+            check_link_error(write_grid_geometry_program);
+            glDeleteShader(shader);
+        }
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer);
+        glClearBufferData(
+            GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, &MAX);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 2,
+            intersection_record_buffer, 0, intersection_count * 2);
+
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glUseProgram(write_grid_geometry_program);
+        glDispatchCompute(static_cast<uint32_t>(spheres.size()), 1, 1);
+
+        unsigned int const sort_grid_geometry_program = glCreateProgram();
+        {
+            unsigned int const shader =
+                load_spirv<1>("shaders/sort_grid_geometry_by_grid.comp.spv",
+                    GL_COMPUTE_SHADER, {0}, {intersection_count});
+            glAttachShader(sort_grid_geometry_program, shader);
+            glLinkProgram(sort_grid_geometry_program);
+            check_link_error(sort_grid_geometry_program);
+            glDeleteShader(shader);
+        }
 
         if (camera.dirty) {
             camera.dirty = false;

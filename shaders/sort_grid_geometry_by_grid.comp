@@ -2,15 +2,14 @@
 
 #extension GL_EXT_scalar_block_layout: require
 
-#include "aabb.glsl"
-#include "material.glsl"
-#include "geometry.glsl"
-#include "uniform_grid.glsl"
-
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-layout(std430, binding = 1) buffer intersection_pair {
-    uint grid_sphere_pair[2 * GRID_SPHERE_PAIR_COUNT];
+// rounded up to power of 2
+layout(constant_id = 0) const uint GRID_SPHERE_PAIR_ROUNDED_UP_COUNT = 1;
+
+layout(std430, binding = 1) writeonly buffer intersection_pair {
+    uint intersection_grid_id[GRID_SPHERE_PAIR_ROUNDED_UP_COUNT];
+    uint intersection_sphere_id[GRID_SPHERE_PAIR_ROUNDED_UP_COUNT];
 };
 
 void main() {

@@ -2,12 +2,20 @@
 
 #extension GL_EXT_scalar_block_layout: require
 
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(constant_id = 0) const uint SPHERE_COUNT = 1;
+
+layout(constant_id = 1) const uint GRID_ALONG_X_AXIS = 1;
+
+layout(constant_id = 2) const uint GRID_ALONG_Y_AXIS = 1;
+
+layout(constant_id = 3) const uint GRID_ALONG_Z_AXIS = 1;
+
 #include "aabb.glsl"
 #include "material.glsl"
 #include "geometry.glsl"
 #include "uniform_grid.glsl"
-
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(std430, binding = 1) uniform sphere_geometries {
     sphere_t spheres[SPHERE_COUNT];
@@ -18,8 +26,12 @@ layout(std430, binding = 2) uniform acceleration_structure {
     aabb_t world_aabb;
 };
 
-layout(std430, binding = 0) buffer grid_start {
+layout(std430, binding = 0) buffer intersection_start {
     uint grid_sphere_intersection_start[SPHERE_COUNT + 1];
+};
+
+layout(std430, binding = 1) writeonly buffer sphere_grid_occupation {
+    ivec3 grid_occupation_pair[SPHERE_COUNT * 2];
 };
 
 void main() {
@@ -30,8 +42,10 @@ void main() {
     const ivec3 lowest_grid = world2grid(uniform_grid, lowest_point);
     const ivec3 highest_grid = world2grid(uniform_grid, highest_point);
     const ivec3 grid_count = highest_grid - lowest_grid + ivec3(1, 1, 1);
+    grid_occupation_pair[2 * working_index] = lowest_grid;
+    grid_occupation_pair[2 * working_index + 1] = highest_grid;
     const uint count = grid_count.x * grid_count.y * grid_count.z;
-    for (int i = working_index + 1; i <= SPHERE_COUNT; ++ i) {
+    for (uint i = working_index + 1; i <= SPHERE_COUNT; ++ i) {
         atomicAdd(grid_sphere_intersection_start[i], count);
     }
 }
