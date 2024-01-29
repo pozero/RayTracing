@@ -28,8 +28,12 @@ layout(std430, binding = 1) readonly buffer sphere_grid_occupation {
     ivec3 grid_occupation_pair[SPHERE_COUNT * 2];
 };
 
-layout(std430, binding = 2) writeonly buffer intersection_pair {
-    uint intersection_grid_sphere_id[GRID_SPHERE_PAIR_ROUNDED_UP_COUNT * 2];
+layout(std430, binding = 2) writeonly buffer intersection_pair_grid {
+    uint intersection_grid_id[GRID_SPHERE_PAIR_ROUNDED_UP_COUNT];
+};
+
+layout(std430, binding = 3) writeonly buffer intersection_pair_geometry {
+    uint intersection_sphere_id[GRID_SPHERE_PAIR_ROUNDED_UP_COUNT];
 };
 
 void main() {
@@ -40,8 +44,8 @@ void main() {
     for (int z = lowest_grid.z; z <= highest_grid.z; ++ z) {
         for (int y = lowest_grid.y; y <= highest_grid.y; ++ y) {
             for (int x = lowest_grid.x; x <= highest_grid.x; ++ x) {
-                intersection_grid_sphere_id[2 * pair_index] = flatten_grid_coord(ivec3(x, y, z));
-                intersection_grid_sphere_id[2 * pair_index + 1] = working_index;
+                intersection_grid_id[pair_index] = flatten_grid_coord(ivec3(x, y, z));
+                intersection_sphere_id[pair_index] = working_index;
                 ++ pair_index;
             }
         }

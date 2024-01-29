@@ -152,6 +152,17 @@ struct glsl_camera_t {
     float accumulated_scalar;
 };
 
+#define LOCAL_ELEMENTS_COUNT 16
+#define LOCAL_BITONIC_MERGE_SORT 0
+#define LOCAL_DISPERSE 1
+#define BIG_FLIP 2
+#define BIG_DISPERSE 3
+
+struct glsl_bitonic_sort_parameter_t {
+    uint32_t h;
+    uint32_t algorithm;
+};
+
 int constexpr FRAME_WIDTH = 1200;
 int constexpr FRAME_HEIGHT = 500;
 
@@ -403,7 +414,7 @@ int main() {
     glGenBuffers(1, &camera_buffer);
     glBindBuffer(GL_UNIFORM_BUFFER, camera_buffer);
     glBufferData(
-        GL_UNIFORM_BUFFER, sizeof(glsl_camera_t), nullptr, GL_STATIC_DRAW);
+        GL_UNIFORM_BUFFER, sizeof(glsl_camera_t), nullptr, GL_STATIC_READ);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferRange(
         GL_UNIFORM_BUFFER, 0, camera_buffer, 0, sizeof(glsl_camera_t));
@@ -460,14 +471,14 @@ int main() {
     glGenBuffers(1, &sphere_buffer);
     glBindBuffer(GL_UNIFORM_BUFFER, sphere_buffer);
     glBufferData(
-        GL_UNIFORM_BUFFER, sphere_buffer_size, spheres.data(), GL_STATIC_DRAW);
+        GL_UNIFORM_BUFFER, sphere_buffer_size, spheres.data(), GL_STATIC_READ);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindBufferRange(
         GL_UNIFORM_BUFFER, 1, sphere_buffer, 0, sphere_buffer_size);
 
-    uint32_t constexpr GRID_ALONG_X_AXIS = 3;
-    uint32_t constexpr GRID_ALONG_Y_AXIS = 3;
-    uint32_t constexpr GRID_ALONG_Z_AXIS = 3;
+    uint32_t constexpr GRID_ALONG_X_AXIS = 4;
+    uint32_t constexpr GRID_ALONG_Y_AXIS = 4;
+    uint32_t constexpr GRID_ALONG_Z_AXIS = 4;
 
     glsl_aabb_t const world_aabb = get_world_aabb(spheres);
     glsl_uniform_grid_t const uniform_grid = create_uniform_grid(
@@ -497,17 +508,6 @@ int main() {
     glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, intersection_start_buffer, 0,
         intersection_start_buffer_size);
 
-    unsigned int intersection_record_buffer = 0;
-    long const intersection_record_buffer_max_size =
-        2 * rounded_up_to_power_2(
-                GRID_ALONG_X_AXIS * GRID_ALONG_Y_AXIS * GRID_ALONG_Z_AXIS *
-                static_cast<uint32_t>(spheres.size() * sizeof(uint32_t)));
-    glGenBuffers(1, &intersection_record_buffer);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer_max_size,
-        nullptr, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
     unsigned int sphere_grid_occupation_buffer = 0;
     long const sphere_grid_occupation_buffer_size =
         2 * static_cast<uint32_t>(sizeof(glm::ivec4) * spheres.size());
@@ -518,6 +518,35 @@ int main() {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1,
         sphere_grid_occupation_buffer, 0, sphere_grid_occupation_buffer_size);
+
+    std::array<unsigned int, 2> intersection_record_buffer{};
+    long const intersection_record_buffer_max_size = rounded_up_to_power_2(
+        GRID_ALONG_X_AXIS * GRID_ALONG_Y_AXIS * GRID_ALONG_Z_AXIS *
+        static_cast<uint32_t>(spheres.size() * sizeof(uint32_t)));
+    glGenBuffers(2, intersection_record_buffer.data());
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer[0]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer_max_size,
+        nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 2,
+        intersection_record_buffer[0], 0, intersection_record_buffer_max_size);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer[1]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer_max_size,
+        nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 3,
+        intersection_record_buffer[1], 0, intersection_record_buffer_max_size);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    unsigned int sorting_parameter_buffer = 0;
+    glGenBuffers(1, &sorting_parameter_buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, sorting_parameter_buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER,
+        sizeof(glsl_bitonic_sort_parameter_t), nullptr, GL_DYNAMIC_READ);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 4, sorting_parameter_buffer, 0,
+        sizeof(glsl_bitonic_sort_parameter_t));
 
     camera_t camera = create_camera();
 
@@ -594,27 +623,64 @@ int main() {
             glDeleteShader(shader);
         }
 
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer[0]);
         glClearBufferData(
             GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, &MAX);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-        glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 2,
-            intersection_record_buffer, 0, intersection_count * 2);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, intersection_record_buffer[1]);
+        glClearBufferData(
+            GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, &MAX);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         glUseProgram(write_grid_geometry_program);
         glDispatchCompute(static_cast<uint32_t>(spheres.size()), 1, 1);
 
+        uint32_t h = LOCAL_ELEMENTS_COUNT * 2;
+        uint32_t const sort_work_group_count = intersection_count / h;
+        glsl_bitonic_sort_parameter_t sort_parameter{
+            h, LOCAL_BITONIC_MERGE_SORT};
+
         unsigned int const sort_grid_geometry_program = glCreateProgram();
         {
             unsigned int const shader =
-                load_spirv<1>("shaders/sort_grid_geometry_by_grid.comp.spv",
-                    GL_COMPUTE_SHADER, {0}, {intersection_count});
+                load_spirv<2>("shaders/sort_grid_geometry_by_grid.comp.spv",
+                    GL_COMPUTE_SHADER, {0, 1},
+                    {intersection_count, LOCAL_ELEMENTS_COUNT});
             glAttachShader(sort_grid_geometry_program, shader);
             glLinkProgram(sort_grid_geometry_program);
             check_link_error(sort_grid_geometry_program);
             glDeleteShader(shader);
         }
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, sorting_parameter_buffer);
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
+            sizeof(glsl_bitonic_sort_parameter_t), &sort_parameter);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glMemoryBarrier(GL_UNIFORM_BARRIER_BIT);
+        glUseProgram(sort_grid_geometry_program);
+        glDispatchCompute(sort_work_group_count, 1, 1);
+        h *= 2;
+        for (; h <= intersection_count; h *= 2) {
+            sort_parameter.algorithm = BIG_FLIP;
+            sort_parameter.h = h;
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
+                sizeof(glsl_bitonic_sort_parameter_t), &sort_parameter);
+            glMemoryBarrier(GL_UNIFORM_BARRIER_BIT);
+            glDispatchCompute(sort_work_group_count, 1, 1);
+            for (uint32_t hh = h / 2; hh > 1; hh /= 2) {
+                sort_parameter.algorithm = hh <= sort_work_group_count * 2 ?
+                                               LOCAL_DISPERSE :
+                                               BIG_DISPERSE;
+                sort_parameter.h = hh;
+                glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
+                    sizeof(glsl_bitonic_sort_parameter_t), &sort_parameter);
+                glMemoryBarrier(GL_UNIFORM_BARRIER_BIT);
+                glDispatchCompute(sort_work_group_count, 1, 1);
+            }
+        }
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
         if (camera.dirty) {
             camera.dirty = false;
