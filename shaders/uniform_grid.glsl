@@ -1,16 +1,32 @@
 struct uniform_grid_t {
     vec3 starting_point;
     vec3 grid_size;
+    vec3 inv_grid_size;
 };
 
 ivec3 world2grid(const in uniform_grid_t uniform_grid,
                   const in vec3 world_coord) {
-    return ivec3((world_coord - uniform_grid.starting_point) / uniform_grid.grid_size);
+    return ivec3((world_coord - uniform_grid.starting_point) * uniform_grid.inv_grid_size);
 }
 
 vec3 grid2world(const in uniform_grid_t uniform_grid,
                  const in ivec3 grid_coord) {
     return grid_coord * uniform_grid.grid_size + uniform_grid.starting_point;
+}
+
+float grid2world_x(const in uniform_grid_t uniform_grid,
+                   const in int x) {
+    return x * uniform_grid.grid_size.x + uniform_grid.starting_point.x;
+}
+
+float grid2world_y(const in uniform_grid_t uniform_grid,
+                   const in int y) {
+    return y * uniform_grid.grid_size.y + uniform_grid.starting_point.y;
+}
+
+float grid2world_z(const in uniform_grid_t uniform_grid,
+                   const in int z) {
+    return z * uniform_grid.grid_size.z + uniform_grid.starting_point.z;
 }
 
 aabb_t get_grid_aabb(const in uniform_grid_t uniform_grid,
