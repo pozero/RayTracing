@@ -1,0 +1,49 @@
+#version 460
+
+#extension GL_EXT_scalar_block_layout: require
+
+layout(constant_id = 0) const uint GRID_ALONG_X_AXIS = 1;
+
+layout(constant_id = 1) const uint GRID_ALONG_Y_AXIS = 1;
+
+layout(constant_id = 2) const uint GRID_ALONG_Z_AXIS = 1;
+
+layout(constant_id = 3) const uint GRID_SPHERE_PAIR_ROUNDED_UP_COUNT = 1;
+
+#include "aabb.glsl"
+#include "uniform_grid.glsl"
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 2) buffer intersection_pair_grid {
+    uint intersection_grid_id[GRID_SPHERE_PAIR_ROUNDED_UP_COUNT];
+};
+
+layout(std430, binding = 5) writeonly buffer geometry_in_grid {
+    uint geometry_in_grid_start[GRID_ALONG_X_AXIS * GRID_ALONG_Y_AXIS * GRID_ALONG_Z_AXIS + 1];
+};
+
+void main() {
+    const uint grid_id = flatten_grid_coord(ivec3(gl_GlobalInvocationID.xyz));
+    uint left = 0;
+    uint right = GRID_SPHERE_PAIR_ROUNDED_UP_COUNT - 1;
+    uint idx = 0;
+    while (left <= right) {
+        const uint mid = left + (right - left) / 2;
+        if (intersection_grid_id[mid] > grid_id) {
+            right = mid - 1;
+        } else if (intersection_grid_id[mid] == grid_id) {
+            idx = mid;
+            break;
+        } else /* intersection_grid_id[mid] < grid_id */ {
+            left = mid + 1;
+        }
+    }
+    uint count = 1;
+    for (uint i = idx; i > 0 && intersection_grid_id[i - 1] == grid_id; -- i, ++ count) {}
+    for (uint i = idx; i < GRID_SPHERE_PAIR_ROUNDED_UP_COUNT - 1 && intersection_grid_id[i + 1] == grid_id; ++ i, ++ count) {}
+    for (uint i = grid_id + 1; i <= GRID_ALONG_X_AXIS * GRID_ALONG_Y_AXIS * GRID_ALONG_Z_AXIS; ++ i) {
+       atomicAdd(geometry_in_grid_start[i], count);
+    }
+}
+

@@ -8,6 +8,7 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <cassert>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Weverything"
@@ -480,6 +481,10 @@ int main() {
     uint32_t constexpr GRID_ALONG_Y_AXIS = 4;
     uint32_t constexpr GRID_ALONG_Z_AXIS = 4;
 
+    assert(GRID_ALONG_X_AXIS * GRID_ALONG_Y_AXIS * GRID_ALONG_Z_AXIS *
+               spheres.size() * sizeof(uint32_t) >=
+           std::numeric_limits<uint32_t>::max());
+
     glsl_aabb_t const world_aabb = get_world_aabb(spheres);
     glsl_uniform_grid_t const uniform_grid = create_uniform_grid(
         world_aabb, GRID_ALONG_X_AXIS, GRID_ALONG_Y_AXIS, GRID_ALONG_Y_AXIS);
@@ -547,6 +552,18 @@ int main() {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 4, sorting_parameter_buffer, 0,
         sizeof(glsl_bitonic_sort_parameter_t));
+
+    unsigned int geometry_in_grid_buffer = 0;
+    long const geometry_in_grid_buffer_size =
+        sizeof(uint32_t) *
+        (GRID_ALONG_X_AXIS * GRID_ALONG_Y_AXIS * GRID_ALONG_Z_AXIS + 1);
+    glGenBuffers(1, &geometry_in_grid_buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, geometry_in_grid_buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, geometry_in_grid_buffer_size,
+        nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 5, geometry_in_grid_buffer, 0,
+        geometry_in_grid_buffer_size);
 
     camera_t camera = create_camera();
 
@@ -681,6 +698,29 @@ int main() {
             }
         }
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+        unsigned int const count_geometry_program = glCreateProgram();
+        {
+            unsigned int const shader =
+                load_spirv<4>("shaders/count_geometry.comp.spv",
+                    GL_COMPUTE_SHADER, {0, 1, 2, 3},
+                    {GRID_ALONG_X_AXIS, GRID_ALONG_Y_AXIS, GRID_ALONG_Z_AXIS,
+                        intersection_count});
+            glAttachShader(count_geometry_program, shader);
+            glLinkProgram(count_geometry_program);
+            check_link_error(count_geometry_program);
+            glDeleteShader(shader);
+        }
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, geometry_in_grid_buffer);
+        glClearBufferData(
+            GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, &ZERO);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glUseProgram(count_geometry_program);
+        glDispatchCompute(
+            GRID_ALONG_X_AXIS, GRID_ALONG_Y_AXIS, GRID_ALONG_Z_AXIS);
 
         if (camera.dirty) {
             camera.dirty = false;
