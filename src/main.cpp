@@ -101,8 +101,9 @@ int main() {
     ///* Initialization: Swapchain *///
     ///////////////////////////////////
     prepare_swapchain(vk_phy_dev, vk_surface);
+    wait_window(vk_dev, vk_phy_dev, vk_surface, window);
     auto [vk_swapchain, vk_swapchain_images, vk_swapchain_image_views] =
-        create_swapchain(vk_dev, vk_phy_dev, vk_surface, window, vk_queues);
+        create_swapchain(vk_dev, vk_surface, vk_queues);
     ///////////////////////////////////
     ///* Initialization: Swapchain *///
     ///////////////////////////////////
@@ -118,6 +119,22 @@ int main() {
     /////////////////////////////////////////////////////
 
     size_t constexpr FRAME_IN_FLIGHT = 3;
+
+    auto const recreate_swapchain = [&]() {
+        wait_window(vk_dev, vk_phy_dev, vk_surface, window);
+        for (auto const framebuffer : vk_framebuffers) {
+            vk_dev.destroyFramebuffer(framebuffer);
+        }
+        for (auto const image_view : vk_swapchain_image_views) {
+            vk_dev.destroyImageView(image_view);
+        }
+        vk_swapchain_images.clear();
+        vk_dev.destroySwapchainKHR(vk_swapchain);
+        std::tie(vk_swapchain, vk_swapchain_images, vk_swapchain_image_views) =
+            create_swapchain(vk_dev, vk_surface, vk_queues);
+        vk_framebuffers = create_framebuffers(
+            vk_dev, vk_render_pass, vk_swapchain_image_views);
+    };
 
     /////////////////////////////////////////
     ///* Initialization: Command Buffers *///
@@ -189,9 +206,7 @@ int main() {
         result = vk_dev.acquireNextImageKHR(vk_swapchain, 1e9,
             present_semaphore, nullptr, &swapchain_image_idx);
         if (result == vk::Result::eErrorOutOfDateKHR) {
-            std::tie(vk_swapchain, vk_swapchain_images,
-                vk_swapchain_image_views) = create_swapchain(vk_dev, vk_phy_dev,
-                vk_surface, window, vk_queues);
+            recreate_swapchain();
             continue;
         }
         CHECK(result == vk::Result::eSuccess ||
@@ -258,9 +273,7 @@ int main() {
         result = vk_queues.present_queue.presentKHR(present_info);
         if (result == vk::Result::eErrorOutOfDateKHR ||
             result == vk::Result::eSuboptimalKHR) {
-            std::tie(vk_swapchain, vk_swapchain_images,
-                vk_swapchain_image_views) = create_swapchain(vk_dev, vk_phy_dev,
-                vk_surface, window, vk_queues);
+            recreate_swapchain();
         } else {
             CHECK(result == vk::Result::eSuccess, "");
         }

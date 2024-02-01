@@ -49,32 +49,10 @@ void prepare_swapchain(
 }
 
 std::tuple<vk::SwapchainKHR, std::vector<vk::Image>, std::vector<vk::ImageView>>
-    create_swapchain(vk::Device device, vk::PhysicalDevice physical_dev,
-        vk::SurfaceKHR surface, GLFWwindow* window, vulkan_queues const& queues,
-        vk::SwapchainKHR old_swapchain) {
+    create_swapchain(vk::Device device, vk::SurfaceKHR surface,
+        vulkan_queues const& queues) {
     CHECK(swapchain_prepared, "");
     vk::Result result;
-    do {
-        VK_CHECK_CREATE(result, surface_capabilities,
-            physical_dev.getSurfaceCapabilitiesKHR(surface));
-        int width = 0;
-        int height = 0;
-        if (surface_capabilities.currentExtent.width == (uint32_t) -1 ||
-            surface_capabilities.currentExtent.height == (uint32_t) -1) {
-            glfwGetFramebufferSize(window, &width, &height);
-            swapchain_extent = vk::Extent2D{
-                .width = std::clamp((uint32_t) width,
-                    surface_capabilities.minImageExtent.width,
-                    surface_capabilities.maxImageExtent.width),
-                .height = std::clamp((uint32_t) height,
-                    surface_capabilities.minImageExtent.height,
-                    surface_capabilities.maxImageExtent.height),
-            };
-            glfwWaitEvents();
-        } else {
-            swapchain_extent = surface_capabilities.currentExtent;
-        }
-    } while (swapchain_extent.width == 0 || swapchain_extent.height == 0);
     vk::SwapchainKHR swapchain;
     vk::SwapchainCreateInfoKHR swapchain_info{
         .surface = surface,
@@ -92,7 +70,6 @@ std::tuple<vk::SwapchainKHR, std::vector<vk::Image>, std::vector<vk::ImageView>>
         .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
         .presentMode = present_mode,
         .clipped = vk::True,
-        .oldSwapchain = old_swapchain,
     };
     std::array const sharing_queue{
         queues.present_queue_idx,
@@ -105,9 +82,6 @@ std::tuple<vk::SwapchainKHR, std::vector<vk::Image>, std::vector<vk::ImageView>>
     }
     VK_CHECK_CREATE(
         result, swapchain, device.createSwapchainKHR(swapchain_info));
-    if (old_swapchain) {
-        device.destroySwapchainKHR(old_swapchain);
-    }
     std::vector<vk::Image> swapchain_images{};
     VK_CHECK_CREATE(
         result, swapchain_images, device.getSwapchainImagesKHR(swapchain));
@@ -137,4 +111,31 @@ std::tuple<vk::SwapchainKHR, std::vector<vk::Image>, std::vector<vk::ImageView>>
             device.createImageView(image_view_info, nullptr));
     }
     return std::make_tuple(swapchain, swapchain_images, swapchain_image_views);
+}
+
+void wait_window(vk::Device device, vk::PhysicalDevice physical_dev,
+    vk::SurfaceKHR surface, struct GLFWwindow* window) {
+    vk::Result result;
+    do {
+        VK_CHECK_CREATE(result, surface_capabilities,
+            physical_dev.getSurfaceCapabilitiesKHR(surface));
+        int width = 0;
+        int height = 0;
+        if (surface_capabilities.currentExtent.width == (uint32_t) -1 ||
+            surface_capabilities.currentExtent.height == (uint32_t) -1) {
+            glfwGetFramebufferSize(window, &width, &height);
+            swapchain_extent = vk::Extent2D{
+                .width = std::clamp((uint32_t) width,
+                    surface_capabilities.minImageExtent.width,
+                    surface_capabilities.maxImageExtent.width),
+                .height = std::clamp((uint32_t) height,
+                    surface_capabilities.minImageExtent.height,
+                    surface_capabilities.maxImageExtent.height),
+            };
+            glfwWaitEvents();
+        } else {
+            swapchain_extent = surface_capabilities.currentExtent;
+        }
+    } while (swapchain_extent.width == 0 || swapchain_extent.height == 0);
+    VK_CHECK(result, device.waitIdle());
 }
