@@ -311,9 +311,9 @@ vec3 ddd_dda_ray_tracing(in ray_t ray) {
     world_t_min += 1e-3;
     vec3 cur_pos = ray_at(ray, world_t_min);
     ivec3 cur_grid = world2grid(uniform_grid, cur_pos);
-    ray.origin = cur_pos;
     #pragma optionNV (unroll all)
     for (int iter = 0; iter < RAY_BOUNCE_MAX_COUNT; ++ iter) {
+        ray.origin = cur_pos;
         const vec3 inv_diretion = vec3(1.0) / ray.direction;
         const ivec3 ray_direction_positive = ivec3(ray.direction.x > 0.0, 
                                                    ray.direction.y > 0.0,
@@ -322,9 +322,9 @@ vec3 ddd_dda_ray_tracing(in ray_t ray) {
         bool reach_boundary = false;
         bool hit_anything = false;
         hit_record_t hit_record = empty_hit_record();
-        while (!reach_boundary && !hit_anything) {
+        while (true) {
             const uint grid_id = flatten_grid_coord(cur_grid);
-            const float t_min = 0.01;
+            const float t_min = 0.001;
             float t_max = 1.0 / 0.0;
             for (uint sphere_idx_idx = geometry_in_grid_start[grid_id];
                  sphere_idx_idx < geometry_in_grid_start[grid_id + 1];
@@ -334,6 +334,9 @@ vec3 ddd_dda_ray_tracing(in ray_t ray) {
                         t_max = hit_record.t;
                         hit_anything = true;
                     }
+            }
+            if (hit_anything) {
+                break;
             }
 
             const ivec3 next_grid = cur_grid + ray_direction_positive;
@@ -353,14 +356,16 @@ vec3 ddd_dda_ray_tracing(in ray_t ray) {
             const int selected_field = 0 * int(x_smallest) + 1 * int(y_smallest) + 2 * int(z_smallest);
             cur_grid[selected_field] += grid_step[selected_field];
             reach_boundary = cur_grid[selected_field] == grid_boundary[selected_field];
-            cur_pos = ray_at(ray, t_proceed[selected_field] + 1e-3);
-            ray.origin = cur_pos;
+            if (reach_boundary) {
+                break;
+            }
+            cur_pos = ray_at(ray, t_proceed[selected_field] + 1e-5);
         }
 
         if (hit_anything) {
             const vec3 attenuation = scatter(ray, hit_record);
             accumulated_attenuation = attenuation * accumulated_attenuation;
-            cur_pos = hit_record.point;
+            cur_pos = ray.origin;
             cur_grid = world2grid(uniform_grid, cur_pos);
         } else {
             const vec3 sky_color = gradient_background(vec3(0.5, 0.7, 1.0), 

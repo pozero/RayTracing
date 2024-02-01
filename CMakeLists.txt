@@ -40,9 +40,11 @@ add_executable(Raytracing)
 if (IPO)
     set_property(TARGET Raytracing PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
+
 target_compile_definitions(Raytracing
     PRIVATE
-        ROOT_PATH="${PROJECT_SOURCE_DIR}"
+        ROOT_PATH="${PROJECT_SOURCE_DIR}/"
+        BINARY_PATH="${PROJECT_BINARY_DIR}/"
 )
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     target_compile_options(Raytracing 
@@ -59,6 +61,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
             -Wno-c++20-extensions
             -Wno-old-style-cast
             -Wno-newline-eof
+            -Wno-padded
             -ffast-math 
             $<$<CONFIG:Debug>:-fstandalone-debug>
             $<$<CONFIG:RelWithDebInfo>:-fstandalone-debug>
@@ -67,27 +70,46 @@ else()
     message(FATAL_ERROR "Unsupported compiler: ${CMAKE_CXX_COMPILER_ID}")
 endif()
 
+file(GLOB_RECURSE 
+   CPP_SOURCE_FILE
+       "${PROJECT_SOURCE_DIR}/src/*.cpp"
+       "${PROJECT_SOURCE_DIR}/src/*.h"
+)
+
 target_sources(Raytracing
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/src/main.cpp
-        ${PROJECT_SOURCE_DIR}/src/glad_impl.cpp
-        ${PROJECT_SOURCE_DIR}/src/stb_image_write_impl.cpp
+   PRIVATE
+       ${CPP_SOURCE_FILE}
 )
 
 target_include_directories(Raytracing
     PRIVATE
         ${PROJECT_SOURCE_DIR}/src
         ${PROJECT_SOURCE_DIR}/third_party/glfw/include
-        ${PROJECT_SOURCE_DIR}/third_party/glad/include
         ${PROJECT_SOURCE_DIR}/third_party/glm
         ${PROJECT_SOURCE_DIR}/third_party/stb
+        ${PROJECT_SOURCE_DIR}/third_party/fmt/include
+        ${PROJECT_SOURCE_DIR}/third_party/vma/include
 )
 
+set(BUILD_SHARED_LIBS OFF)
 set(GLFW_BUILD_EXAMPLES OFF)
 set(GLFW_BUILD_TESTS OFF)
 set(GLFW_BUILD_DOCS OFF)
 set(GLFW_INSTALL OFF)
+set(GLFW_VULKAN_STATIC OFF)
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/glfw)
+
+option(FMT_PEDANTIC OFF)
+option(FMT_WERROR OFF)
+option(FMT_DOC OFF)
+option(FMT_INSTALL OFF)
+option(FMT_TEST OFF)
+option(FMT_FUZZ OFF)
+option(FMT_CUDA_TEST OFF)
+option(FMT_OS ON)
+option(FMT_MODULE OFF)
+option(FMT_SYSTEM_HEADERS OFF)
+add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/fmt)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/glm)
 
@@ -95,13 +117,14 @@ target_link_libraries(Raytracing
     PRIVATE
         glfw
         glm::glm
+        fmt::fmt
 )
 
 file(GLOB_RECURSE 
     GLSL_SOURCE_FILES
-        "shaders/*.frag"
-        "shaders/*.vert"
-        "shaders/*.comp"
+        "${PROJECT_SOURCE_DIR}/shaders/*.frag"
+        "${PROJECT_SOURCE_DIR}/shaders/*.vert"
+        "${PROJECT_SOURCE_DIR}/shaders/*.comp"
 )
 
 foreach(GLSL ${GLSL_SOURCE_FILES})
@@ -110,7 +133,7 @@ foreach(GLSL ${GLSL_SOURCE_FILES})
   add_custom_command(
     OUTPUT ${SPIRV}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
-    COMMAND glslc --target-env=opengl -g ${GLSL} -o ${SPIRV}
+    COMMAND glslc --target-env=vulkan -g ${GLSL} -o ${SPIRV}
     DEPENDS ${GLSL})
   list(APPEND SPIRV_BINARY_FILES ${SPIRV})
 endforeach(GLSL)
@@ -121,14 +144,23 @@ add_custom_target(compile_shaders
 
 add_dependencies(Raytracing compile_shaders)
 
-add_custom_target(link_compile_database 
-    ALL
-        COMMAND 
-            ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json ${PROJECT_SOURCE_DIR}/compile_commands.json
-)
+if(WIN32)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+    target_include_directories(Raytracing
+        PRIVATE
+            $ENV{VULKAN_SDK}/Include
+    )
+else()
+    add_custom_target(link_compile_database 
+        ALL
+            COMMAND 
+                ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json ${PROJECT_SOURCE_DIR}/compile_commands.json
+    )
 
-add_custom_target(link_executable 
-    ALL
-        COMMAND 
-            ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_BINARY_DIR}/Raytracing ${PROJECT_SOURCE_DIR}/Raytracing
-)
+    add_custom_target(link_executable 
+        ALL
+            COMMAND 
+                ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_BINARY_DIR}/Raytracing ${PROJECT_SOURCE_DIR}/Raytracing
+    )
+endif()
+

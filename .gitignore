@@ -1,5 +1,6 @@
 build/
 .cache/
+tmp/
 compile_commands.json
 Raytracing
 *.spv
