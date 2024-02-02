@@ -14,6 +14,7 @@
 #include "vulkan_commands.h"
 #include "vulkan_descriptor.h"
 #include "vulkan_pipeline.h"
+#include "vulkan_buffer.h"
 #include "vulkan_check.h"
 #include "file.h"
 
@@ -289,6 +290,7 @@ int main() {
     /////////////////
     glfwTerminate();
     VK_CHECK(result, vk_dev.waitIdle());
+    cleanup_staging_buffer(vma_alloc);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         vk_dev.destroyFence(render_fences[i]);
         vk_dev.destroySemaphore(render_semaphores[i]);
