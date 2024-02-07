@@ -139,3 +139,18 @@ void wait_window(vk::Device device, vk::PhysicalDevice physical_dev,
     } while (swapchain_extent.width == 0 || swapchain_extent.height == 0);
     VK_CHECK(result, device.waitIdle());
 }
+
+vk::Result swapchain_acquire_next_image_wrapper(vk::Device device,
+    vk::SwapchainKHR swapchain, uint64_t timeout, vk::Semaphore semaphore,
+    vk::Fence fence, uint32_t* image_idx) {
+    VkResult result = ::vk::defaultDispatchLoaderDynamic.vkAcquireNextImageKHR(
+        device, swapchain, timeout, semaphore, fence, image_idx);
+    return (vk::Result) result;
+}
+
+vk::Result swapchain_present_wrapper(
+    vk::Queue queue, vk::PresentInfoKHR const& present_info) {
+    VkResult result = ::vk::defaultDispatchLoaderDynamic.vkQueuePresentKHR(
+        queue, reinterpret_cast<const VkPresentInfoKHR*>(&present_info));
+    return (vk::Result) result;
+}

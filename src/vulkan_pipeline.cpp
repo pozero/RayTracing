@@ -100,3 +100,28 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
     device.destroyShaderModule(frag_module);
     return pipeline;
 }
+
+vk::Pipeline create_compute_pipeline(vk::Device device,
+    std::string_view comp_path, vk::PipelineLayout layout,
+    std::vector<uint32_t> const& specialization_constants) {
+    vk::Result result;
+    vk::Pipeline pipeline;
+    vk::ShaderModule comp_module = create_shader_module(device, comp_path);
+    std::vector<vk::SpecializationMapEntry> entries{};
+    vk::SpecializationInfo const specialization_info =
+        create_specialization_info(specialization_constants, entries);
+    vk::PipelineShaderStageCreateInfo const shader_stage_info{
+        .stage = vk::ShaderStageFlagBits::eCompute,
+        .module = comp_module,
+        .pName = "main",
+        .pSpecializationInfo = &specialization_info,
+    };
+    vk::ComputePipelineCreateInfo const pipeline_info{
+        .stage = shader_stage_info,
+        .layout = layout,
+    };
+    VK_CHECK_CREATE(
+        result, pipeline, device.createComputePipeline({}, pipeline_info));
+    device.destroyShaderModule(comp_module);
+    return pipeline;
+}

@@ -30,7 +30,7 @@ float get_aabb_volume(glsl_aabb const& aabb) {
            (aabb.z_interval[1] - aabb.z_interval[0]);
 }
 
-inline glsl_sphere create_sphere(
+glsl_sphere create_sphere(
     glm::vec3 const& center, float radius, glsl_material const& material) {
     glm::vec2 const mu{-0.5f, 0.5f};
     glm::vec2 const x_interval =

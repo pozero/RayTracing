@@ -83,9 +83,10 @@ void update_buffer(VmaAllocator vma_alloc, vk::CommandBuffer command_buffer,
                 fitted_staging_idx = i;
             }
         }
-        if (fitted_staging_idx == data.size()) {
+        if (fitted_staging_idx == staging_buffers.size()) {
             staging = create_staging_buffer(
                 vma_alloc, (uint32_t) data.size(), {vk::QueueFamilyIgnored});
+            staging_buffers.push_back(staging);
         } else {
             staging = staging_buffers[fitted_staging_idx];
         }
@@ -98,19 +99,6 @@ void update_buffer(VmaAllocator vma_alloc, vk::CommandBuffer command_buffer,
             .size = (uint32_t) data.size(),
         };
         command_buffer.copyBuffer(staging.buffer, buffer.buffer, 1, &copy_info);
-        vk::BufferMemoryBarrier const buffer_barrier{
-            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-            .dstAccessMask = vk::AccessFlagBits::eShaderRead,
-            .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-            .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-            .buffer = buffer.buffer,
-            .offset = offset,
-            .size = (uint32_t) data.size(),
-        };
-        command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-            vk::PipelineStageFlagBits::eFragmentShader |
-                vk::PipelineStageFlagBits::eComputeShader,
-            {}, 0, nullptr, 1, &buffer_barrier, 0, nullptr);
     }
 }
 

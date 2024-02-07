@@ -9,7 +9,7 @@ camera create_camera(glm::vec3 const& lookfrom, glm::vec3 const& lookat,
     camera.w = glm::normalize(camera.position - camera.lookat);
     camera.u =
         glm::normalize(glm::cross(glm::vec3{0.0f, 1.0f, 0.0f}, camera.w));
-    camera.v = glm::cross(camera.w, camera.u);
+    camera.v = glm::cross(camera.u, camera.w);
     camera.focal_length = 1.0f;
     camera.viewport_height =
         2 * glm::tan(glm::radians(camera.vertical_field_of_view) / 2) *
@@ -64,7 +64,8 @@ glsl_camera get_glsl_camera(
                                           0.5f * (viewport_u + viewport_v);
     glm::vec3 const upper_left_pixel =
         viewport_upper_left + 0.5f * (pixel_delta_u + pixel_delta_v);
-    float accumulated_scalar = 1.0f / static_cast<float>(camera.frame_counter);
+    float const accumulated_scalar =
+        1.0f / static_cast<float>(camera.frame_counter);
     return glsl_camera{
         pixel_delta_u,
         pixel_delta_v,

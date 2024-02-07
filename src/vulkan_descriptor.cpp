@@ -1,7 +1,8 @@
 #include "vulkan_descriptor.h"
 #include "vulkan_check.h"
+#include "vulkan_buffer.h"
 
-vk::DescriptorSetLayout create_descritpro_set_layout(vk::Device device,
+vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device,
     vk::ShaderStageFlagBits shader_stage,
     std::vector<vk_descriptor_set_binding> const& bindings) {
     vk::Result result;
@@ -55,4 +56,112 @@ vk::PipelineLayout create_pipeline_layout(vk::Device device,
     VK_CHECK_CREATE(result, pipeline_layout,
         device.createPipelineLayout(pipeline_layout_info));
     return pipeline_layout;
+}
+
+vk::DescriptorPool create_descriptor_pool(vk::Device device) {
+    vk::Result result;
+    vk::DescriptorPool descriptor_pool;
+    uint32_t constexpr MAX_SETS = 16;
+    std::array const descriptor_pool_sizes{
+        vk::DescriptorPoolSize{
+                               .type = vk::DescriptorType::eCombinedImageSampler,
+                               .descriptorCount = 50 * MAX_SETS,
+                               },
+        vk::DescriptorPoolSize{
+                               .type = vk::DescriptorType::eStorageBuffer,
+                               .descriptorCount = 50 * MAX_SETS,
+                               },
+        vk::DescriptorPoolSize{
+                               .type = vk::DescriptorType::eUniformBuffer,
+                               .descriptorCount = 50 * MAX_SETS,
+                               },
+    };
+    vk::DescriptorPoolCreateInfo const pool_info{
+        .maxSets = MAX_SETS,
+        .poolSizeCount = (uint32_t) descriptor_pool_sizes.size(),
+        .pPoolSizes = descriptor_pool_sizes.data(),
+    };
+    VK_CHECK_CREATE(
+        result, descriptor_pool, device.createDescriptorPool(pool_info));
+    return descriptor_pool;
+}
+
+std::vector<vk::DescriptorSet> create_descriptor_set(vk::Device device,
+    vk::DescriptorPool descriptor_pool,
+    vk::DescriptorSetLayout descriptor_set_layout, uint32_t count) {
+    vk::Result result;
+    std::vector<vk::DescriptorSet> descriptor_sets{};
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts{
+        count, descriptor_set_layout};
+    vk::DescriptorSetAllocateInfo const allocate_info{
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = count,
+        .pSetLayouts = descriptor_set_layouts.data(),
+    };
+    VK_CHECK_CREATE(
+        result, descriptor_sets, device.allocateDescriptorSets(allocate_info));
+    return descriptor_sets;
+}
+
+void update_descriptor(vk::Device device, vk::DescriptorSet descriptor_set,
+    uint32_t binding, uint32_t array_idx, vk::DescriptorType type,
+    vk::DescriptorImageInfo const* image_info,
+    vk::DescriptorBufferInfo const* buffer_info) {
+    vk::WriteDescriptorSet const write_info{
+        .dstSet = descriptor_set,
+        .dstBinding = binding,
+        .dstArrayElement = array_idx,
+        .descriptorCount = 1,
+        .descriptorType = type,
+        .pImageInfo = image_info,
+        .pBufferInfo = buffer_info,
+    };
+    device.updateDescriptorSets(1, &write_info, 0, nullptr);
+}
+
+void update_descriptor_image_sampler_combined(vk::Device device,
+    vk::DescriptorSet descriptor_set, uint32_t binding, uint32_t array_idx,
+    vk::Sampler sampler, vk::ImageView view) {
+    vk::DescriptorImageInfo const image_info{
+        .sampler = sampler,
+        .imageView = view,
+        .imageLayout = vk::ImageLayout::eGeneral,
+    };
+    update_descriptor(device, descriptor_set, binding, array_idx,
+        vk::DescriptorType::eCombinedImageSampler, &image_info, nullptr);
+}
+
+void update_descriptor_storage_image(vk::Device device,
+    vk::DescriptorSet descriptor_set, uint32_t binding, uint32_t array_idx,
+    vk::ImageView view) {
+    vk::DescriptorImageInfo const image_info{
+        .imageView = view,
+        .imageLayout = vk::ImageLayout::eGeneral,
+    };
+    update_descriptor(device, descriptor_set, binding, array_idx,
+        vk::DescriptorType::eStorageImage, &image_info, nullptr);
+}
+
+void update_descriptor_storage_buffer_whole(vk::Device device,
+    vk::DescriptorSet descriptor_set, uint32_t binding, uint32_t array_idx,
+    vma_buffer const& buffer) {
+    vk::DescriptorBufferInfo const buffer_info{
+        .buffer = buffer.buffer,
+        .offset = 0,
+        .range = vk::WholeSize,
+    };
+    update_descriptor(device, descriptor_set, binding, array_idx,
+        vk::DescriptorType::eStorageBuffer, nullptr, &buffer_info);
+}
+
+void update_descriptor_uniform_buffer_whole(vk::Device device,
+    vk::DescriptorSet descriptor_set, uint32_t binding, uint32_t array_idx,
+    vma_buffer const& buffer) {
+    vk::DescriptorBufferInfo const buffer_info{
+        .buffer = buffer.buffer,
+        .offset = 0,
+        .range = vk::WholeSize,
+    };
+    update_descriptor(device, descriptor_set, binding, array_idx,
+        vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info);
 }

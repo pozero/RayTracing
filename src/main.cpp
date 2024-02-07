@@ -16,11 +16,31 @@
 #include "vulkan_pipeline.h"
 #include "vulkan_buffer.h"
 #include "vulkan_check.h"
+#include "vulkan_buffer.h"
+#include "vulkan_image.h"
 #include "file.h"
+
+#include "camera.h"
+#include "renderable.h"
 
 #define VK_DBG 1
 
+template <typename T>
+std::span<const uint8_t> to_span(T const& obj) {
+    return std::span<const uint8_t>{
+        reinterpret_cast<const uint8_t*>(&obj), sizeof(T)};
+}
+
+template <typename T>
+std::span<const uint8_t> to_span(std::vector<T> const& vec) {
+    return std::span<const uint8_t>{
+        reinterpret_cast<const uint8_t*>(vec.data()), vec.size() * sizeof(T)};
+}
+
 GLFWwindow* glfw_create_window(int width, int height);
+
+std::pair<camera, std::vector<glsl_sphere>> get_scene1(
+    uint32_t frame_width, uint32_t frame_height);
 
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 int main() {
@@ -34,11 +54,10 @@ int main() {
     ///* Initialization: GLFW *///
     //////////////////////////////
 
-    vk::Result result;
-
     //////////////////////////////////
     ///* Initialization: Instance *///
     //////////////////////////////////
+    vk::Result result;
     std::vector<const char*> inst_ext{};
     std::vector<const char*> inst_layer{};
     std::vector<const char*> dev_ext{};
@@ -60,20 +79,19 @@ int main() {
         .synchronization2 = VK_TRUE};
     dev_creation_pnext = &synchron2_feature;
     vk::DynamicLoader vk_loader = load_vulkan();
-    vk::Instance vk_inst = create_instance(inst_ext, inst_layer);
+    vk::Instance instance = create_instance(inst_ext, inst_layer);
     //////////////////////////////////
     ///* Initialization: Instance *///
     //////////////////////////////////
 
 #if defined(VK_DBG)
-    vk::DebugUtilsMessengerEXT vk_dbg_messenger =
-        create_debug_messenger(vk_inst);
+    vk::DebugUtilsMessengerEXT dbg_messenger = create_debug_messenger(instance);
 #endif
 
     /////////////////////////////////
     ///* Initialization: Surface *///
     /////////////////////////////////
-    vk::SurfaceKHR vk_surface = create_surface(vk_inst, window);
+    vk::SurfaceKHR surface = create_surface(instance, window);
     /////////////////////////////////
     ///* Initialization: Surface *///
     /////////////////////////////////
@@ -81,11 +99,10 @@ int main() {
     ////////////////////////////////
     ///* Initialization: Device *///
     ////////////////////////////////
-    auto [vk_dev, vk_phy_dev, vk_queues] =
-        select_physical_device_create_device_queues(
-            vk_inst, vk_surface, dev_ext, dev_creation_pnext);
+    auto [dev, phy_dev, queues] = select_physical_device_create_device_queues(
+        instance, surface, dev_ext, dev_creation_pnext);
     fmt::println(
-        "Selected device: {}", vk_phy_dev.getProperties().deviceName.data());
+        "Selected device: {}", phy_dev.getProperties().deviceName.data());
     ////////////////////////////////
     ///* Initialization: Device *///
     ////////////////////////////////
@@ -93,7 +110,7 @@ int main() {
     /////////////////////////////
     ///* Initialization: VMA *///
     /////////////////////////////
-    VmaAllocator vma_alloc = create_vma_allocator(vk_inst, vk_phy_dev, vk_dev);
+    VmaAllocator vma_alloc = create_vma_allocator(instance, phy_dev, dev);
     /////////////////////////////
     ///* Initialization: VMA *///
     /////////////////////////////
@@ -101,10 +118,10 @@ int main() {
     ///////////////////////////////////
     ///* Initialization: Swapchain *///
     ///////////////////////////////////
-    prepare_swapchain(vk_phy_dev, vk_surface);
-    wait_window(vk_dev, vk_phy_dev, vk_surface, window);
-    auto [vk_swapchain, vk_swapchain_images, vk_swapchain_image_views] =
-        create_swapchain(vk_dev, vk_surface, vk_queues);
+    prepare_swapchain(phy_dev, surface);
+    wait_window(dev, phy_dev, surface, window);
+    auto [swapchain, swapchain_images, swapchain_image_views] =
+        create_swapchain(dev, surface, queues);
     ///////////////////////////////////
     ///* Initialization: Swapchain *///
     ///////////////////////////////////
@@ -112,9 +129,9 @@ int main() {
     /////////////////////////////////////////////////////
     ///* Initialization: Render Pass And Framebuffer *///
     /////////////////////////////////////////////////////
-    vk::RenderPass vk_render_pass = create_render_pass(vk_dev);
-    std::vector<vk::Framebuffer> vk_framebuffers =
-        create_framebuffers(vk_dev, vk_render_pass, vk_swapchain_image_views);
+    vk::RenderPass render_pass = create_render_pass(dev);
+    std::vector<vk::Framebuffer> framebuffers =
+        create_framebuffers(dev, render_pass, swapchain_image_views);
     /////////////////////////////////////////////////////
     ///* Initialization: Render Pass And Framebuffer *///
     /////////////////////////////////////////////////////
@@ -122,89 +139,269 @@ int main() {
     size_t constexpr FRAME_IN_FLIGHT = 3;
 
     auto const recreate_swapchain = [&]() {
-        wait_window(vk_dev, vk_phy_dev, vk_surface, window);
-        for (auto const framebuffer : vk_framebuffers) {
-            vk_dev.destroyFramebuffer(framebuffer);
+        wait_window(dev, phy_dev, surface, window);
+        for (auto const framebuffer : framebuffers) {
+            dev.destroyFramebuffer(framebuffer);
         }
-        for (auto const image_view : vk_swapchain_image_views) {
-            vk_dev.destroyImageView(image_view);
+        for (auto const image_view : swapchain_image_views) {
+            dev.destroyImageView(image_view);
         }
-        vk_swapchain_images.clear();
-        vk_dev.destroySwapchainKHR(vk_swapchain);
-        std::tie(vk_swapchain, vk_swapchain_images, vk_swapchain_image_views) =
-            create_swapchain(vk_dev, vk_surface, vk_queues);
-        vk_framebuffers = create_framebuffers(
-            vk_dev, vk_render_pass, vk_swapchain_image_views);
+        swapchain_images.clear();
+        dev.destroySwapchainKHR(swapchain);
+        std::tie(swapchain, swapchain_images, swapchain_image_views) =
+            create_swapchain(dev, surface, queues);
+        framebuffers =
+            create_framebuffers(dev, render_pass, swapchain_image_views);
     };
 
     /////////////////////////////////////////
     ///* Initialization: Command Buffers *///
     /////////////////////////////////////////
-    auto [vk_graphics_command_pool, vk_graphics_command_buffers] =
-        create_command_buffer(
-            vk_dev, vk_queues.graphics_queue_idx, FRAME_IN_FLIGHT);
+    auto [graphics_command_pool, graphics_command_buffers] =
+        create_command_buffer(dev, queues.graphics_queue_idx, FRAME_IN_FLIGHT);
+    auto [raytracing_command_pool, raytracing_command_buffers] =
+        create_command_buffer(dev, queues.compute_queue_idx, FRAME_IN_FLIGHT);
     /////////////////////////////////////////
     ///* Initialization: Command Buffers *///
     /////////////////////////////////////////
 
+    ////////////////////////////
+    ///* Prepare Scene Data *///
+    ////////////////////////////
+    auto [camera, spheres] = get_scene1(win_width, win_height);
+    ////////////////////////////
+    ///* Prepare Scene Data *///
+    ////////////////////////////
+
     /////////////////////////////////////
     ///* Initialization: Descriptors *///
     /////////////////////////////////////
-    vk::PipelineLayout vk_graphics_pipeline_layout =
-        create_pipeline_layout(vk_dev, {});
+    vk::DescriptorPool descriptor_pool = create_descriptor_pool(dev);
+    // graphics pipeline
+    std::vector<vk_descriptor_set_binding> const
+        graphics_pipeline_set_0_binding{
+            {vk::DescriptorType::eCombinedImageSampler, 1},
+            {       vk::DescriptorType::eUniformBuffer, 1},
+    };
+    vk::DescriptorSetLayout graphics_pipeline_set_0_layout =
+        create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eFragment,
+            graphics_pipeline_set_0_binding);
+    vk::PipelineLayout graphics_pipeline_layout =
+        create_pipeline_layout(dev, {graphics_pipeline_set_0_layout});
+    std::vector<vk::DescriptorSet> graphics_pipeline_set_0s =
+        create_descriptor_set(dev, descriptor_pool,
+            graphics_pipeline_set_0_layout, FRAME_IN_FLIGHT);
+    // raytracing pipeline
+    std::vector<vk_descriptor_set_binding> const
+        raytracing_pipeline_set_0_binding{
+            { vk::DescriptorType::eStorageImage, 1},
+            {vk::DescriptorType::eUniformBuffer, 1},
+            {vk::DescriptorType::eUniformBuffer, 1},
+    };
+    vk::DescriptorSetLayout raytracing_pipeline_set_0_layout =
+        create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eCompute,
+            raytracing_pipeline_set_0_binding);
+    vk::PipelineLayout raytracing_pipeline_layout =
+        create_pipeline_layout(dev, {raytracing_pipeline_set_0_layout});
+    std::vector<vk::DescriptorSet> raytracing_pipeline_set_0s =
+        create_descriptor_set(dev, descriptor_pool,
+            raytracing_pipeline_set_0_layout, FRAME_IN_FLIGHT);
     /////////////////////////////////////
     ///* Initialization: Descriptors *///
     /////////////////////////////////////
 
-    ///////////////////////////////////////////
-    ///* Initialization: Graphics Pipeline *///
-    ///////////////////////////////////////////
-    vk::Pipeline vk_graphics_pipeline = create_graphics_pipeline(vk_dev,
-        PATH_FROM_BINARY("shaders/rect.vert.spv"),
-        PATH_FROM_BINARY("shaders/rect.frag.spv"), vk_graphics_pipeline_layout,
-        vk_render_pass);
-    ///////////////////////////////////////////
-    ///* Initialization: Graphics Pipeline *///
-    ///////////////////////////////////////////
+    //////////////////////////////////
+    ///* Initialization: Pipeline *///
+    //////////////////////////////////
+    vk::Pipeline graphics_pipeline =
+        create_graphics_pipeline(dev, PATH_FROM_BINARY("shaders/rect.vert.spv"),
+            PATH_FROM_BINARY("shaders/rect.frag.spv"), graphics_pipeline_layout,
+            render_pass);
+    vk::Pipeline raytracing_pipeline = create_compute_pipeline(dev,
+        PATH_FROM_BINARY("shaders/raytracer.comp.spv"),
+        raytracing_pipeline_layout, {(uint32_t) spheres.size()});
+    //////////////////////////////////
+    ///* Initialization: Pipeline *///
+    //////////////////////////////////
 
     ///////////////////////////////////////////
     ///* Initialization: Frame Sync Object *///
     ///////////////////////////////////////////
-    uint32_t frame_idx = 0;
+    uint32_t frame_counter = 0;
     vk::FenceCreateInfo const fence_info{
         .flags = vk::FenceCreateFlagBits::eSignaled,
     };
     vk::SemaphoreCreateInfo const semaphore_info{};
     std::vector<vk::Fence> render_fences(FRAME_IN_FLIGHT);
+    std::vector<vk::Fence> raytracing_fences(FRAME_IN_FLIGHT);
     std::vector<vk::Semaphore> render_semaphores(FRAME_IN_FLIGHT);
     std::vector<vk::Semaphore> present_semaphores(FRAME_IN_FLIGHT);
+    std::vector<vk::Semaphore> raytracing_semaphores(FRAME_IN_FLIGHT);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
+        VK_CHECK_CREATE(result, render_fences[i], dev.createFence(fence_info));
         VK_CHECK_CREATE(
-            result, render_fences[i], vk_dev.createFence(fence_info));
-        VK_CHECK_CREATE(result, render_semaphores[i],
-            vk_dev.createSemaphore(semaphore_info));
-        VK_CHECK_CREATE(result, present_semaphores[i],
-            vk_dev.createSemaphore(semaphore_info));
+            result, raytracing_fences[i], dev.createFence(fence_info));
+        VK_CHECK_CREATE(
+            result, render_semaphores[i], dev.createSemaphore(semaphore_info));
+        VK_CHECK_CREATE(
+            result, present_semaphores[i], dev.createSemaphore(semaphore_info));
+        VK_CHECK_CREATE(result, raytracing_semaphores[i],
+            dev.createSemaphore(semaphore_info));
     }
     ///////////////////////////////////////////
     ///* Initialization: Frame Sync Object *///
     ///////////////////////////////////////////
 
+    ///////////////////////////////////////
+    ///* Initialization: Image, Buffer *///
+    ///////////////////////////////////////
+    vk::Sampler default_sampler = create_default_sampler(dev);
+    vma_image accumulation_image;
+    vk::ImageView accumulation_image_view;
+    std::array<vma_buffer, FRAME_IN_FLIGHT> camera_buffers{};
+    std::array<vma_buffer, FRAME_IN_FLIGHT> sphere_buffers{};
+    {
+        ++frame_counter;
+        vk::Fence const fence = render_fences[0];
+        vk::CommandBuffer const command_buffer = graphics_command_buffers[0];
+        VK_CHECK(result, command_buffer.reset());
+        VK_CHECK(result, dev.resetFences(1, &fence));
+        vk::CommandBufferBeginInfo const begin_info{
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+        };
+        VK_CHECK(result, command_buffer.begin(begin_info));
+        std::tie(accumulation_image, accumulation_image_view) =
+            create_texture2d_simple(dev, vma_alloc, command_buffer, win_width,
+                win_height, vk::Format::eR32G32B32A32Sfloat,
+                std::vector<uint32_t>{
+                    queues.compute_queue_idx,
+                    queues.graphics_queue_idx,
+                },
+                vk::ImageUsageFlagBits::eStorage);
+        for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
+            camera_buffers[i] = create_gpu_only_buffer(vma_alloc,
+                (uint32_t) sizeof(glsl_camera), {},
+                vk::BufferUsageFlagBits::eUniformBuffer);
+            sphere_buffers[i] = create_gpu_only_buffer(vma_alloc,
+                (uint32_t) (spheres.size() * sizeof(glsl_sphere)), {},
+                vk::BufferUsageFlagBits::eUniformBuffer);
+            update_buffer(vma_alloc, command_buffer, sphere_buffers[i],
+                to_span(spheres), 0);
+            // graphics pipeline set 0
+            update_descriptor_image_sampler_combined(dev,
+                graphics_pipeline_set_0s[i], 0, 0, default_sampler,
+                accumulation_image_view);
+            update_descriptor_uniform_buffer_whole(
+                dev, graphics_pipeline_set_0s[i], 1, 0, camera_buffers[i]);
+            // raytracing pipeline set 0
+            update_descriptor_storage_image(dev, raytracing_pipeline_set_0s[i],
+                0, 0, accumulation_image_view);
+            update_descriptor_uniform_buffer_whole(
+                dev, raytracing_pipeline_set_0s[i], 1, 0, camera_buffers[i]);
+            update_descriptor_uniform_buffer_whole(
+                dev, raytracing_pipeline_set_0s[i], 2, 0, sphere_buffers[i]);
+        }
+        VK_CHECK(result, command_buffer.end());
+        vk::SubmitInfo const submit_info{
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = nullptr,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &command_buffer,
+            .signalSemaphoreCount = 0,
+            .pSignalSemaphores = nullptr,
+        };
+        VK_CHECK(result, queues.graphics_queue.submit(1, &submit_info, fence));
+    }
+    ///////////////////////////////////////
+    ///* Initialization: Image, Buffer *///
+    ///////////////////////////////////////
+
     ////////////////////
     ///* RenderLoop *///
     ////////////////////
     while (!glfwWindowShouldClose(window)) {
-        uint32_t const frame_sync_idx = frame_idx % FRAME_IN_FLIGHT;
+        uint32_t const frame_sync_idx = frame_counter % FRAME_IN_FLIGHT;
         vk::Fence const render_fence = render_fences[frame_sync_idx];
+        vk::Fence const raytracing_fence = raytracing_fences[frame_sync_idx];
         vk::Semaphore const render_semaphore =
             render_semaphores[frame_sync_idx];
         vk::Semaphore const present_semaphore =
             present_semaphores[frame_sync_idx];
-        vk::CommandBuffer const command_buffer =
-            vk_graphics_command_buffers[frame_sync_idx];
-        VK_CHECK(result, vk_dev.waitForFences(1, &render_fence, true, 1e9));
+        vk::Semaphore const raytracing_semaphore =
+            raytracing_semaphores[frame_sync_idx];
+        vk::CommandBuffer const graphics_command_buffer =
+            graphics_command_buffers[frame_sync_idx];
+        vk::CommandBuffer const raytracing_command_buffer =
+            raytracing_command_buffers[frame_sync_idx];
+        vk::CommandBufferBeginInfo const begin_info{
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+        };
+        std::array const graphics_pipeline_sets{
+            graphics_pipeline_set_0s[frame_sync_idx],
+        };
+        std::array const raytracing_pipieline_sets{
+            raytracing_pipeline_set_0s[frame_sync_idx],
+        };
+        glsl_camera const glsl_camera =
+            get_glsl_camera(camera, win_width, win_height);
+        vma_buffer camera_buffer = camera_buffers[frame_sync_idx];
+
+        /////////////////////////////
+        ///* Raytracing Pipeline *///
+        /////////////////////////////
+        VK_CHECK(result, dev.waitForFences(1, &raytracing_fence, true, 1e9));
+        VK_CHECK(result, dev.resetFences(1, &raytracing_fence));
+        VK_CHECK(result, raytracing_command_buffer.reset());
+        VK_CHECK(result, raytracing_command_buffer.begin(begin_info));
+        update_buffer(vma_alloc, raytracing_command_buffer, camera_buffer,
+            to_span(glsl_camera), 0);
+        vk::BufferMemoryBarrier const camera_buffer_barrier{
+            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+            .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+            .srcQueueFamilyIndex = queues.compute_queue_idx,
+            .dstQueueFamilyIndex = queues.compute_queue_idx,
+            .buffer = camera_buffer.buffer,
+            .offset = 0,
+            .size = vk::WholeSize,
+        };
+        raytracing_command_buffer.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 1,
+            &camera_buffer_barrier, 0, nullptr);
+        raytracing_command_buffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eCompute, raytracing_pipeline_layout, 0,
+            (uint32_t) raytracing_pipieline_sets.size(),
+            raytracing_pipieline_sets.data(), 0, nullptr);
+        raytracing_command_buffer.bindPipeline(
+            vk::PipelineBindPoint::eCompute, raytracing_pipeline);
+        raytracing_command_buffer.dispatch(win_width, win_height, 1);
+        VK_CHECK(result, raytracing_command_buffer.end());
+        std::array raytracing_pipeline_signal_semaphores{
+            raytracing_semaphore,
+        };
+        vk::SubmitInfo const raytracing_submit_info{
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = nullptr,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &raytracing_command_buffer,
+            .signalSemaphoreCount =
+                (uint32_t) raytracing_pipeline_signal_semaphores.size(),
+            .pSignalSemaphores = raytracing_pipeline_signal_semaphores.data(),
+        };
+        VK_CHECK(result, queues.compute_queue.submit(
+                             1, &raytracing_submit_info, raytracing_fence));
+        /////////////////////////////
+        ///* Raytracing Pipeline *///
+        /////////////////////////////
+
+        ///////////////////////////
+        ///* Graphics Pipeline *///
+        ///////////////////////////
+        VK_CHECK(result, dev.waitForFences(1, &render_fence, true, 1e9));
         uint32_t swapchain_image_idx = 0;
-        result = vk_dev.acquireNextImageKHR(vk_swapchain, 1e9,
+        result = swapchain_acquire_next_image_wrapper(dev, swapchain, 1e9,
             present_semaphore, nullptr, &swapchain_image_idx);
         if (result == vk::Result::eErrorOutOfDateKHR) {
             recreate_swapchain();
@@ -213,12 +410,9 @@ int main() {
         CHECK(result == vk::Result::eSuccess ||
                   result == vk::Result::eSuboptimalKHR,
             "");
-        VK_CHECK(result, vk_dev.resetFences(1, &render_fence));
-        VK_CHECK(result, command_buffer.reset());
-        vk::CommandBufferBeginInfo const begin_info{
-            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
-        };
-        VK_CHECK(result, command_buffer.begin(begin_info));
+        VK_CHECK(result, dev.resetFences(1, &render_fence));
+        VK_CHECK(result, graphics_command_buffer.reset());
+        VK_CHECK(result, graphics_command_buffer.begin(begin_info));
         vk::Rect2D const render_area{
             .offset = {0, 0},
             .extent = swapchain_extent,
@@ -227,13 +421,13 @@ int main() {
             .color = {std::array{0.243f, 0.706f, 0.537f, 1.0f}},
         };
         vk::RenderPassBeginInfo const render_pass_begin_info{
-            .renderPass = vk_render_pass,
-            .framebuffer = vk_framebuffers[swapchain_image_idx],
+            .renderPass = render_pass,
+            .framebuffer = framebuffers[swapchain_image_idx],
             .renderArea = render_area,
             .clearValueCount = 1,
             .pClearValues = &color_clear_val,
         };
-        command_buffer.beginRenderPass(
+        graphics_command_buffer.beginRenderPass(
             render_pass_begin_info, vk::SubpassContents::eInline);
         vk::Viewport const viewport{
             .x = 0.0f,
@@ -243,43 +437,59 @@ int main() {
             .minDepth = 0.0f,
             .maxDepth = 1.0f,
         };
-        command_buffer.setViewport(0, 1, &viewport);
+        graphics_command_buffer.setViewport(0, 1, &viewport);
         vk::Rect2D const scissor = render_area;
-        command_buffer.setScissor(0, 1, &scissor);
-        command_buffer.bindPipeline(
-            vk::PipelineBindPoint::eGraphics, vk_graphics_pipeline);
-        command_buffer.draw(3, 1, 0, 0);
-        command_buffer.endRenderPass();
-        VK_CHECK(result, command_buffer.end());
-        vk::PipelineStageFlags const wait_stage =
-            vk::PipelineStageFlagBits::eColorAttachmentOutput;
-        vk::SubmitInfo const submit_info{
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &present_semaphore,
-            .pWaitDstStageMask = &wait_stage,
+        graphics_command_buffer.setScissor(0, 1, &scissor);
+        graphics_command_buffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics, graphics_pipeline_layout, 0,
+            (uint32_t) graphics_pipeline_sets.size(),
+            graphics_pipeline_sets.data(), 0, nullptr);
+        graphics_command_buffer.bindPipeline(
+            vk::PipelineBindPoint::eGraphics, graphics_pipeline);
+        graphics_command_buffer.draw(3, 1, 0, 0);
+        graphics_command_buffer.endRenderPass();
+        VK_CHECK(result, graphics_command_buffer.end());
+        std::array const graphics_submit_wait_semaphores{
+            present_semaphore,
+            raytracing_semaphore,
+        };
+        std::array<vk::PipelineStageFlags, 2> const graphics_submit_wait_stages{
+            vk::PipelineStageFlagBits::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits::eFragmentShader,
+        };
+        vk::SubmitInfo const graphics_submit_info{
+            .waitSemaphoreCount =
+                (uint32_t) graphics_submit_wait_semaphores.size(),
+            .pWaitSemaphores = graphics_submit_wait_semaphores.data(),
+            .pWaitDstStageMask = graphics_submit_wait_stages.data(),
             .commandBufferCount = 1,
-            .pCommandBuffers = &command_buffer,
+            .pCommandBuffers = &graphics_command_buffer,
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &render_semaphore,
         };
-        VK_CHECK(result,
-            vk_queues.graphics_queue.submit(1, &submit_info, render_fence));
+        VK_CHECK(result, queues.graphics_queue.submit(
+                             1, &graphics_submit_info, render_fence));
         vk::PresentInfoKHR const present_info{
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &render_semaphore,
             .swapchainCount = 1,
-            .pSwapchains = &vk_swapchain,
+            .pSwapchains = &swapchain,
             .pImageIndices = &swapchain_image_idx,
         };
-        result = vk_queues.present_queue.presentKHR(present_info);
+        result = swapchain_present_wrapper(queues.present_queue, present_info);
         if (result == vk::Result::eErrorOutOfDateKHR ||
             result == vk::Result::eSuboptimalKHR) {
             recreate_swapchain();
         } else {
             CHECK(result == vk::Result::eSuccess, "");
         }
+        ///////////////////////////
+        ///* Graphics Pipeline *///
+        ///////////////////////////
+
         glfwPollEvents();
-        ++frame_idx;
+        ++frame_counter;
+        ++camera.frame_counter;
     }
     ////////////////////
     ///* RenderLoop *///
@@ -289,31 +499,46 @@ int main() {
     ///* Cleanup *///
     /////////////////
     glfwTerminate();
-    VK_CHECK(result, vk_dev.waitIdle());
-    cleanup_staging_buffer(vma_alloc);
+    VK_CHECK(result, dev.waitIdle());
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
-        vk_dev.destroyFence(render_fences[i]);
-        vk_dev.destroySemaphore(render_semaphores[i]);
-        vk_dev.destroySemaphore(present_semaphores[i]);
+        destory_buffer(vma_alloc, camera_buffers[i]);
+        destory_buffer(vma_alloc, sphere_buffers[i]);
     }
-    vk_dev.destroyPipeline(vk_graphics_pipeline);
-    vk_dev.destroyPipelineLayout(vk_graphics_pipeline_layout);
-    vk_dev.destroyCommandPool(vk_graphics_command_pool);
-    for (auto const framebuffer : vk_framebuffers) {
-        vk_dev.destroyFramebuffer(framebuffer);
+    dev.destroyImageView(accumulation_image_view);
+    destroy_image(vma_alloc, accumulation_image);
+    cleanup_staging_buffer(vma_alloc);
+    dev.destroySampler(default_sampler);
+    for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
+        dev.destroyFence(render_fences[i]);
+        dev.destroyFence(raytracing_fences[i]);
+        dev.destroySemaphore(render_semaphores[i]);
+        dev.destroySemaphore(present_semaphores[i]);
+        dev.destroySemaphore(raytracing_semaphores[i]);
     }
-    vk_dev.destroyRenderPass(vk_render_pass);
-    for (auto const view : vk_swapchain_image_views) {
-        vk_dev.destroyImageView(view);
+    dev.destroyPipeline(graphics_pipeline);
+    dev.destroyPipeline(raytracing_pipeline);
+    dev.destroyPipelineLayout(graphics_pipeline_layout);
+    dev.destroyPipelineLayout(raytracing_pipeline_layout);
+    dev.destroyDescriptorSetLayout(graphics_pipeline_set_0_layout);
+    dev.destroyDescriptorSetLayout(raytracing_pipeline_set_0_layout);
+    dev.destroyDescriptorPool(descriptor_pool);
+    dev.destroyCommandPool(graphics_command_pool);
+    dev.destroyCommandPool(raytracing_command_pool);
+    for (auto const framebuffer : framebuffers) {
+        dev.destroyFramebuffer(framebuffer);
     }
-    vk_dev.destroySwapchainKHR(vk_swapchain);
+    dev.destroyRenderPass(render_pass);
+    for (auto const view : swapchain_image_views) {
+        dev.destroyImageView(view);
+    }
+    dev.destroySwapchainKHR(swapchain);
     vmaDestroyAllocator(vma_alloc);
-    vk_dev.destroy();
-    vk_inst.destroySurfaceKHR(vk_surface);
+    dev.destroy();
+    instance.destroySurfaceKHR(surface);
 #if defined(VK_DBG)
-    vk_inst.destroyDebugUtilsMessengerEXT(vk_dbg_messenger);
+    instance.destroyDebugUtilsMessengerEXT(dbg_messenger);
 #endif
-    vk_inst.destroy();
+    instance.destroy();
     /////////////////
     ///* Cleanup *///
     /////////////////
@@ -332,4 +557,29 @@ GLFWwindow* glfw_create_window(int width, int height) {
     GLFWwindow* window =
         glfwCreateWindow(width, height, "RayTracing", nullptr, nullptr);
     return window;
+}
+
+std::pair<camera, std::vector<glsl_sphere>> get_scene1(
+    uint32_t frame_width, uint32_t frame_height) {
+    std::vector<glsl_sphere> spheres{};
+    glsl_material const material_ground =
+        create_lambertian(glm::vec3{0.8f, 0.8f, 0.0f});
+    glsl_material const material_center =
+        create_lambertian(glm::vec3{0.1f, 0.2f, 0.5f});
+    glsl_material const material_left = create_dielectric(1.5f);
+    glsl_material const material_right =
+        create_metal(glm::vec3{0.8f, 0.6f, 0.2f}, 0.0f);
+    spheres.push_back(create_sphere(
+        glm::vec3{0.0f, -100.5f, -1.0f}, 100.0f, material_ground));
+    spheres.push_back(
+        create_sphere(glm::vec3{0.0f, 0.0f, -1.0f}, 0.5f, material_center));
+    spheres.push_back(
+        create_sphere(glm::vec3{-1.0f, 0.0f, -1.0f}, 0.5f, material_left));
+    spheres.push_back(
+        create_sphere(glm::vec3{-1.0f, 0.0f, -1.0f}, -0.4f, material_left));
+    spheres.push_back(
+        create_sphere(glm::vec3{1.0f, 0.0f, -1.0f}, 0.5f, material_right));
+    camera const camera = create_camera(glm::vec3{-2.0f, 2.0f, 1.0f},
+        glm::vec3{0.0f, 0.0f, -1.0f}, 20.0f, frame_width, frame_height);
+    return std::make_pair(camera, spheres);
 }

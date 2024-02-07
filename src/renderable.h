@@ -40,3 +40,6 @@ struct glsl_sphere {
     glsl_material material;
     glsl_aabb aabb;
 };
+
+glsl_sphere create_sphere(
+    glm::vec3 const& center, float radius, glsl_material const& material);
