@@ -39,7 +39,7 @@ void camera_rotate(
         camera.w[2] = std::sin(camera.yaw) * std::cos(camera.pitch);
         camera.u =
             glm::normalize(glm::cross(glm::vec3{0.0f, 1.0f, 0.0f}, camera.w));
-        camera.v = glm::cross(camera.w, camera.u);
+        camera.v = glm::cross(camera.u, camera.w);
         camera.dirty = true;
     }
     last_cursor_x = cursor_x;

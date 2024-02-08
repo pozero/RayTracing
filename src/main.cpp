@@ -23,6 +23,8 @@
 #include "camera.h"
 #include "renderable.h"
 
+#include "high_resolution_clock.h"
+
 #define VK_DBG 1
 
 template <typename T>
@@ -39,6 +41,9 @@ std::span<const uint8_t> to_span(std::vector<T> const& vec) {
 
 GLFWwindow* glfw_create_window(int width, int height);
 
+void process_input(GLFWwindow* window, camera& camera, float delta_time);
+
+constexpr std::pair<uint32_t, uint32_t> get_frame_size1();
 std::pair<camera, std::vector<glsl_sphere>> get_scene1(
     uint32_t frame_width, uint32_t frame_height);
 
@@ -47,9 +52,8 @@ int main() {
     //////////////////////////////
     ///* Initialization: GLFW *///
     //////////////////////////////
-    int constexpr win_width = 800;
-    int constexpr win_height = 600;
-    GLFWwindow* window = glfw_create_window(win_width, win_height);
+    auto const [win_width, win_height] = get_frame_size1();
+    GLFWwindow* window = glfw_create_window((int) win_width, (int) win_height);
     //////////////////////////////
     ///* Initialization: GLFW *///
     //////////////////////////////
@@ -277,7 +281,8 @@ int main() {
                     queues.compute_queue_idx,
                     queues.graphics_queue_idx,
                 },
-                vk::ImageUsageFlagBits::eStorage);
+                vk::ImageUsageFlagBits::eStorage |
+                    vk::ImageUsageFlagBits::eTransferDst);
         for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
             camera_buffers[i] = create_gpu_only_buffer(vma_alloc,
                 (uint32_t) sizeof(glsl_camera), {},
@@ -317,10 +322,16 @@ int main() {
     ///* Initialization: Image, Buffer *///
     ///////////////////////////////////////
 
+    high_resolution_clock clock{};
+    clock.tick();
+
     ////////////////////
     ///* RenderLoop *///
     ////////////////////
     while (!glfwWindowShouldClose(window)) {
+        clock.tick();
+        process_input(window, camera, clock.get_delta_seconds());
+
         uint32_t const frame_sync_idx = frame_counter % FRAME_IN_FLIGHT;
         vk::Fence const render_fence = render_fences[frame_sync_idx];
         vk::Fence const raytracing_fence = raytracing_fences[frame_sync_idx];
@@ -354,6 +365,36 @@ int main() {
         VK_CHECK(result, dev.resetFences(1, &raytracing_fence));
         VK_CHECK(result, raytracing_command_buffer.reset());
         VK_CHECK(result, raytracing_command_buffer.begin(begin_info));
+        if (camera.dirty) {
+            camera.dirty = false;
+            camera.frame_counter = 1;
+            vk::ClearColorValue accumulation_clear_value{};
+            accumulation_clear_value.setFloat32({0.0f, 0.0f, 0.0f, 1.0f});
+            vk::ImageSubresourceRange const range{
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            };
+            raytracing_command_buffer.clearColorImage(accumulation_image.image,
+                vk::ImageLayout::eGeneral, &accumulation_clear_value, 1,
+                &range);
+            vk::ImageMemoryBarrier const barrier{
+                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+                .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+                .oldLayout = vk::ImageLayout::eGeneral,
+                .newLayout = vk::ImageLayout::eGeneral,
+                .srcQueueFamilyIndex = queues.compute_queue_idx,
+                .dstQueueFamilyIndex = queues.compute_queue_idx,
+                .image = accumulation_image.image,
+                .subresourceRange = range,
+            };
+            raytracing_command_buffer.pipelineBarrier(
+                vk::PipelineStageFlagBits::eTransfer,
+                vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 0,
+                nullptr, 1, &barrier);
+        }
         update_buffer(vma_alloc, raytracing_command_buffer, camera_buffer,
             to_span(glsl_camera), 0);
         vk::BufferMemoryBarrier const camera_buffer_barrier{
@@ -557,6 +598,41 @@ GLFWwindow* glfw_create_window(int width, int height) {
     GLFWwindow* window =
         glfwCreateWindow(width, height, "RayTracing", nullptr, nullptr);
     return window;
+}
+
+void process_input(GLFWwindow* window, camera& camera, float delta_time) {
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, 1);
+    }
+    bool const mouse_left_button_clicked =
+        glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    double cursor_x = 0.0;
+    double cursor_y = 0.0;
+    glfwGetCursorPos(window, &cursor_x, &cursor_y);
+    camera_rotate(camera, static_cast<float>(cursor_x),
+        static_cast<float>(cursor_y), mouse_left_button_clicked);
+
+    float along_minus_z = 0.0f;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        along_minus_z += 1.0f;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        along_minus_z -= 1.0f;
+    }
+    float along_x = 0.0f;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        along_x += 1.0f;
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        along_x -= 1.0f;
+    }
+    if (along_minus_z != 0.0f || along_x != 0.0f) {
+        camera_move(camera, delta_time, along_minus_z, along_x);
+    }
+}
+
+constexpr std::pair<uint32_t, uint32_t> get_frame_size1() {
+    return std::make_pair(800, 600);
 }
 
 std::pair<camera, std::vector<glsl_sphere>> get_scene1(

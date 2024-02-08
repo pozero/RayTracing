@@ -4,19 +4,9 @@
 
 layout(constant_id = 0) const uint SPHERE_COUNT = 1;
 
-// layout(constant_id = 1) const uint GRID_ALONG_X_AXIS = 1;
-
-// layout(constant_id = 2) const uint GRID_ALONG_Y_AXIS = 1;
-
-// layout(constant_id = 3) const uint GRID_ALONG_Z_AXIS = 1;
-
-// layout(constant_id = 4) const uint GRID_SPHERE_PAIR_ROUNDED_UP_COUNT = 1;
-
-#include "aabb.glsl"
 #include "material.glsl"
 #include "geometry.glsl"
 #include "random.glsl"
-// #include "uniform_grid.glsl"
 
 #define RAY_BOUNCE_MAX_COUNT 10
 
@@ -42,11 +32,6 @@ hit_record_t empty_hit_record();
 void hit_record_set_front_face(inout hit_record_t record, 
                                const in ray_t ray,
                                const in vec3 outward_normal);
-
-bool hit_aabb(const in aabb_t aabb,
-              const in ray_t ray,
-              inout float t_min,
-              inout float t_max);
 
 bool hit_sphere(const in sphere_t sphere, 
                 const in ray_t ray, 
@@ -85,19 +70,6 @@ layout(std430, set = 0, binding = 1) uniform camera {
 layout(std430, set = 0, binding = 2) uniform sphere_geometries {
     sphere_t spheres[SPHERE_COUNT];
 };
-
-// layout(std430, binding = 2) uniform acceleration_structure {
-//    uniform_grid_t uniform_grid;
-//    aabb_t world_aabb;
-// };
-// 
-// layout(std430, binding = 3) readonly buffer intersection_pair_geometry {
-//    uint intersection_sphere_id[];
-// };
-// 
-// layout(std430, binding = 5) readonly buffer geometry_in_grid {
-//    uint geometry_in_grid_start[GRID_ALONG_X_AXIS * GRID_ALONG_Y_AXIS * GRID_ALONG_Z_AXIS + 1];
-// };
 
 void main() {
     const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
@@ -139,23 +111,6 @@ void hit_record_set_front_face(inout hit_record_t record,
                                const in vec3 outward_normal) {
     record.front_face = dot(ray.direction, outward_normal) < 0.0;
     record.normal = record.front_face ? outward_normal : -outward_normal;
-}
-
-bool hit_aabb(const in aabb_t aabb,
-              const in ray_t ray,
-              inout float t_min,
-              inout float t_max) {
-    for (int a = 0; a < 3; ++ a) {
-        const float inv_d = 1.0 / ray.direction[a];
-        const int negative_inv_d = int(inv_d < 0.0);
-        const float orig = ray.origin[a];
-        const vec2 interval = get_aabb_interval(aabb, a);
-        const float t0 = (interval[negative_inv_d] - orig) * inv_d;
-        const float t1 = (interval[1 - negative_inv_d] - orig) * inv_d;
-        t_min = max(t0, t_min);
-        t_max = min(t1, t_max);
-    }
-    return t_min <= t_max;
 }
 
 bool hit_sphere(const in sphere_t sphere, 
@@ -296,84 +251,3 @@ vec3 brute_force_ray_tracing(in ray_t ray) {
     }
     return destination_color;
 }
-
-// vec3 ddd_dda_ray_tracing(in ray_t ray) {
-//    float world_t_min = 0.0001;
-//    float world_t_max = 1.0 / 0.0;
-//    if (!hit_aabb(world_aabb, ray, world_t_min, world_t_max)) {
-//        const vec3 sky_color = gradient_background(vec3(0.5, 0.7, 1.0), 
-//                                                   vec3(1.0, 1.0, 1.0),
-//                                                   ray);
-//        return sky_color;
-//    }
-//    vec3 destination_color = vec3(0.0, 0.0, 0.0);
-//    vec3 accumulated_attenuation = vec3(1.0, 1.0, 1.0);
-//    world_t_min += 1e-3;
-//    vec3 cur_pos = ray_at(ray, world_t_min);
-//    ivec3 cur_grid = world2grid(uniform_grid, cur_pos);
-//    #pragma optionNV (unroll all)
-//    for (int iter = 0; iter < RAY_BOUNCE_MAX_COUNT; ++ iter) {
-//        ray.origin = cur_pos;
-//        const vec3 inv_diretion = vec3(1.0) / ray.direction;
-//        const ivec3 ray_direction_positive = ivec3(ray.direction.x > 0.0, 
-//                                                   ray.direction.y > 0.0,
-//                                                   ray.direction.z > 0.0);
-//        const vec3 t_delta = uniform_grid.grid_size * inv_diretion;
-//        bool reach_boundary = false;
-//        bool hit_anything = false;
-//        hit_record_t hit_record = empty_hit_record();
-//        while (true) {
-//            const uint grid_id = flatten_grid_coord(cur_grid);
-//            const float t_min = 0.001;
-//            float t_max = 1.0 / 0.0;
-//            for (uint sphere_idx_idx = geometry_in_grid_start[grid_id];
-//                 sphere_idx_idx < geometry_in_grid_start[grid_id + 1];
-//                 ++ sphere_idx_idx) {
-//                    const uint sphere_idx = intersection_sphere_id[sphere_idx_idx];
-//                    if (hit_sphere(spheres[sphere_idx], ray, t_min, t_max, hit_record)) {
-//                        t_max = hit_record.t;
-//                        hit_anything = true;
-//                    }
-//            }
-//            if (hit_anything) {
-//                break;
-//            }
-// 
-//            const ivec3 next_grid = cur_grid + ray_direction_positive;
-//            const vec3 t_proceed = (grid2world(uniform_grid, next_grid) - cur_pos) * inv_diretion;
-//            const ivec3 grid_step = 2 * ray_direction_positive - ivec3(1);
-//            const ivec3 grid_boundary = ray_direction_positive * ivec3(GRID_ALONG_X_AXIS,
-//                                                                       GRID_ALONG_Y_AXIS,
-//                                                                       GRID_ALONG_Z_AXIS) +
-//                                        (1 - ray_direction_positive) * ivec3(-1);
-//            const bool x_less_than_y = t_proceed.x < t_proceed.y;
-//            const bool x_less_than_z = t_proceed.x < t_proceed.z;
-//            const bool y_less_than_z = t_proceed.y < t_proceed.z;
-//            const bool x_smallest = x_less_than_y && x_less_than_z;
-//            const bool y_smallest = !x_less_than_y && y_less_than_z;
-//            const bool z_smallest = ( x_less_than_y && !x_less_than_z) ||
-//                                    (!x_less_than_y && !y_less_than_z);
-//            const int selected_field = 0 * int(x_smallest) + 1 * int(y_smallest) + 2 * int(z_smallest);
-//            cur_grid[selected_field] += grid_step[selected_field];
-//            reach_boundary = cur_grid[selected_field] == grid_boundary[selected_field];
-//            if (reach_boundary) {
-//                break;
-//            }
-//            cur_pos = ray_at(ray, t_proceed[selected_field] + 1e-5);
-//        }
-// 
-//        if (hit_anything) {
-//            const vec3 attenuation = scatter(ray, hit_record);
-//            accumulated_attenuation = attenuation * accumulated_attenuation;
-//            cur_pos = ray.origin;
-//            cur_grid = world2grid(uniform_grid, cur_pos);
-//        } else {
-//            const vec3 sky_color = gradient_background(vec3(0.5, 0.7, 1.0), 
-//                                                       vec3(1.0, 1.0, 1.0),
-//                                                       ray);
-//            destination_color += accumulated_attenuation * sky_color;
-//            break;
-//        }
-//    }
-//    return destination_color;
-// }
