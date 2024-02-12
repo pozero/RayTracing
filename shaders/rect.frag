@@ -21,6 +21,6 @@ vec3 gamma_correct(const in vec3 value) {
 }
 
 void main() {
-    vec3 color = gamma_correct(accumulated_scalar * texture(frame, texcoord.xy).rgb);
+    const vec3 color = gamma_correct(accumulated_scalar * texture(frame, texcoord.xy).rgb);
     out_frag = vec4(color, 1.0);
 }

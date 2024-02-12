@@ -4,17 +4,26 @@
 
 vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device,
     vk::ShaderStageFlagBits shader_stage,
-    std::vector<vk_descriptor_set_binding> const& bindings) {
+    std::vector<vk_descriptor_set_binding> const& bindings,
+    vk::DescriptorSetLayoutCreateFlags flags) {
     vk::Result result;
     vk::DescriptorSetLayout descriptor_set_layout;
     std::vector<vk::DescriptorSetLayoutBinding> vk_bindings(bindings.size());
+    std::vector<vk::DescriptorBindingFlags> vk_binding_flags(bindings.size());
     for (uint32_t i = 0; i < bindings.size(); ++i) {
         vk_bindings[i].binding = i;
         vk_bindings[i].descriptorType = bindings[i].descriptor_type;
         vk_bindings[i].descriptorCount = bindings[i].array_count;
         vk_bindings[i].stageFlags = shader_stage;
+        vk_binding_flags[i] = bindings[i].flags;
     }
+    vk::DescriptorSetLayoutBindingFlagsCreateInfo const binding_flags{
+        .bindingCount = (uint32_t) vk_binding_flags.size(),
+        .pBindingFlags = vk_binding_flags.data(),
+    };
     vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_info{
+        .pNext = &binding_flags,
+        .flags = flags,
         .bindingCount = (uint32_t) vk_bindings.size(),
         .pBindings = vk_bindings.data(),
     };
@@ -58,7 +67,8 @@ vk::PipelineLayout create_pipeline_layout(vk::Device device,
     return pipeline_layout;
 }
 
-vk::DescriptorPool create_descriptor_pool(vk::Device device) {
+vk::DescriptorPool create_descriptor_pool(
+    vk::Device device, vk::DescriptorPoolCreateFlags flags) {
     vk::Result result;
     vk::DescriptorPool descriptor_pool;
     uint32_t constexpr MAX_SETS = 16;
@@ -77,6 +87,7 @@ vk::DescriptorPool create_descriptor_pool(vk::Device device) {
                                },
     };
     vk::DescriptorPoolCreateInfo const pool_info{
+        .flags = flags,
         .maxSets = MAX_SETS,
         .poolSizeCount = (uint32_t) descriptor_pool_sizes.size(),
         .pPoolSizes = descriptor_pool_sizes.data(),
@@ -88,12 +99,20 @@ vk::DescriptorPool create_descriptor_pool(vk::Device device) {
 
 std::vector<vk::DescriptorSet> create_descriptor_set(vk::Device device,
     vk::DescriptorPool descriptor_pool,
-    vk::DescriptorSetLayout descriptor_set_layout, uint32_t count) {
+    vk::DescriptorSetLayout descriptor_set_layout, uint32_t count,
+    uint32_t variable_size) {
     vk::Result result;
     std::vector<vk::DescriptorSet> descriptor_sets{};
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts{
         count, descriptor_set_layout};
+    std::vector<uint32_t> variable_sizes(count, variable_size);
+    vk::DescriptorSetVariableDescriptorCountAllocateInfo const
+        variable_count_info{
+            .descriptorSetCount = count,
+            .pDescriptorCounts = variable_sizes.data(),
+        };
     vk::DescriptorSetAllocateInfo const allocate_info{
+        .pNext = variable_size > 0 ? &variable_count_info : nullptr,
         .descriptorPool = descriptor_pool,
         .descriptorSetCount = count,
         .pSetLayouts = descriptor_set_layouts.data(),

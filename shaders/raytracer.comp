@@ -1,6 +1,7 @@
 #version 460
 
 #extension GL_EXT_scalar_block_layout: require
+#extension GL_EXT_nonuniform_qualifier: require
 
 layout(constant_id = 0) const uint SPHERE_COUNT = 1;
 
@@ -9,6 +10,8 @@ layout(constant_id = 0) const uint SPHERE_COUNT = 1;
 #include "random.glsl"
 
 #define RAY_BOUNCE_MAX_COUNT 10
+#define PI 3.1415926535
+#define ONE_OVER_PI (1 / 3.1415926535)
 
 struct ray_t {
     vec3 origin;
@@ -21,6 +24,7 @@ struct hit_record_t {
     vec3 normal;
     material_t material;
     float t;
+    vec2 uv;
     bool front_face;
 };
 
@@ -71,6 +75,8 @@ layout(std430, set = 0, binding = 2) uniform sphere_geometries {
     sphere_t spheres[SPHERE_COUNT];
 };
 
+layout(set = 1, binding = 0) uniform sampler2D textures[];
+
 void main() {
     const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
     const vec3 pixel = upper_left_pixel + 
@@ -102,6 +108,7 @@ hit_record_t empty_hit_record() {
         vec3(0.0, 0.0, 0.0),
         empty_material(),
         0.0,
+        vec2(0.0, 0.0),
         false
     );
 }
@@ -138,6 +145,10 @@ bool hit_sphere(const in sphere_t sphere,
         const vec3 outward_normal = (record.point - sphere.center) / sphere.radius;
         hit_record_set_front_face(record, ray, outward_normal);
         record.material = sphere.material;
+        const float phi = atan(outward_normal.x, outward_normal.z) + PI;
+        const float theta = acos(outward_normal.y);
+        record.uv.x = phi * (0.5 * ONE_OVER_PI);
+        record.uv.y = theta * ONE_OVER_PI;
         return true;
     }
 }
@@ -194,7 +205,10 @@ vec3 scatter(inout ray_t ray,
             if (near_zero(ray.direction)) {
                 ray.direction = hit_record.normal;
             }
-            return hit_record.material.albedo.xyz;
+            return hit_record.material.albedo_texture >= 0 ? 
+                texture(nonuniformEXT(textures[hit_record.material.albedo_texture]), 
+                    hit_record.uv).rgb :
+                hit_record.material.albedo;
         case MATERIAL_METAL:
             ray.origin = hit_record.point;
             const vec3 reflected = reflect(ray.direction, hit_record.normal) + 

@@ -9,9 +9,10 @@ struct material_t {
     vec3 albedo;
     float fuzz;
     float refraction_index;
+    int albedo_texture;
 };
 
 material_t empty_material() {
-    return material_t(0, vec3(0.0, 0.0, 0.0), 0.0, 0.0);
+    return material_t(0, vec3(0.0, 0.0, 0.0), 0.0, 0.0, -1);
 }
 

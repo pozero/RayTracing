@@ -22,6 +22,7 @@
 
 #include "camera.h"
 #include "renderable.h"
+#include "texture.h"
 
 #include "high_resolution_clock.h"
 
@@ -44,8 +45,8 @@ GLFWwindow* glfw_create_window(int width, int height);
 void process_input(GLFWwindow* window, camera& camera, float delta_time);
 
 constexpr std::pair<uint32_t, uint32_t> get_frame_size1();
-std::pair<camera, std::vector<glsl_sphere>> get_scene1(
-    uint32_t frame_width, uint32_t frame_height);
+std::tuple<camera, std::vector<glsl_sphere>, std::vector<texture_data>>
+    get_scene1(uint32_t frame_width, uint32_t frame_height);
 
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 int main() {
@@ -65,6 +66,11 @@ int main() {
     std::vector<const char*> inst_ext{};
     std::vector<const char*> inst_layer{};
     std::vector<const char*> dev_ext{};
+    inst_ext.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+#if defined(VK_DBG)
+    inst_ext.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    inst_layer.push_back("VK_LAYER_KHRONOS_validation");
+#endif
     {
         uint32_t glfw_required_inst_ext_cnt = 0;
         auto const glfw_required_inst_ext_name =
@@ -74,13 +80,21 @@ int main() {
             std::back_inserter(inst_ext));
     }
     dev_ext.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-#if defined(VK_DBG)
-    inst_ext.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    inst_layer.push_back("VK_LAYER_KHRONOS_validation");
-#endif
+    dev_ext.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
     const void* dev_creation_pnext = nullptr;
+    vk::PhysicalDeviceDescriptorIndexingFeatures const
+        descriptor_indexing_features{
+            .shaderSampledImageArrayNonUniformIndexing = vk::True,
+            .descriptorBindingSampledImageUpdateAfterBind = vk::True,
+            .descriptorBindingUpdateUnusedWhilePending = vk::True,
+            .descriptorBindingPartiallyBound = vk::True,
+            .descriptorBindingVariableDescriptorCount = vk::True,
+            .runtimeDescriptorArray = vk::True,
+        };
     vk::PhysicalDeviceSynchronization2Features const synchron2_feature{
-        .synchronization2 = VK_TRUE};
+        .pNext = (void*) &descriptor_indexing_features,
+        .synchronization2 = VK_TRUE,
+    };
     dev_creation_pnext = &synchron2_feature;
     vk::DynamicLoader vk_loader = load_vulkan();
     vk::Instance instance = create_instance(inst_ext, inst_layer);
@@ -105,6 +119,16 @@ int main() {
     ////////////////////////////////
     auto [dev, phy_dev, queues] = select_physical_device_create_device_queues(
         instance, surface, dev_ext, dev_creation_pnext);
+    VkPhysicalDeviceDescriptorIndexingPropertiesEXT descriptor_indexing_properties{
+        .sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT,
+    };
+    VkPhysicalDeviceProperties2KHR phy_dev_properties{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
+        .pNext = &descriptor_indexing_properties,
+    };
+    vk::defaultDispatchLoaderDynamic.vkGetPhysicalDeviceProperties2(
+        phy_dev, &phy_dev_properties);
     fmt::println(
         "Selected device: {}", phy_dev.getProperties().deviceName.data());
     ////////////////////////////////
@@ -172,7 +196,7 @@ int main() {
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
-    auto [camera, spheres] = get_scene1(win_width, win_height);
+    auto [camera, spheres, texture_datas] = get_scene1(win_width, win_height);
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
@@ -180,7 +204,9 @@ int main() {
     /////////////////////////////////////
     ///* Initialization: Descriptors *///
     /////////////////////////////////////
-    vk::DescriptorPool descriptor_pool = create_descriptor_pool(dev);
+    vk::DescriptorPool default_descriptor_pool = create_descriptor_pool(dev);
+    vk::DescriptorPool descriptor_indexing_pool = create_descriptor_pool(
+        dev, vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind);
     // graphics pipeline
     std::vector<vk_descriptor_set_binding> const
         graphics_pipeline_set_0_binding{
@@ -193,7 +219,7 @@ int main() {
     vk::PipelineLayout graphics_pipeline_layout =
         create_pipeline_layout(dev, {graphics_pipeline_set_0_layout});
     std::vector<vk::DescriptorSet> graphics_pipeline_set_0s =
-        create_descriptor_set(dev, descriptor_pool,
+        create_descriptor_set(dev, default_descriptor_pool,
             graphics_pipeline_set_0_layout, FRAME_IN_FLIGHT);
     // raytracing pipeline
     std::vector<vk_descriptor_set_binding> const
@@ -202,14 +228,34 @@ int main() {
             {vk::DescriptorType::eUniformBuffer, 1},
             {vk::DescriptorType::eUniformBuffer, 1},
     };
+    std::vector<vk_descriptor_set_binding> const
+        raytracing_pipeline_set_1_binding{
+            {
+             vk::DescriptorType::eCombinedImageSampler,
+             descriptor_indexing_properties
+             .maxDescriptorSetUpdateAfterBindSampledImages,
+             vk::DescriptorBindingFlagBits::eVariableDescriptorCount |
+             vk::DescriptorBindingFlagBits::eUpdateAfterBind |
+             vk::DescriptorBindingFlagBits::ePartiallyBound |
+             vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending,
+             },
+    };
     vk::DescriptorSetLayout raytracing_pipeline_set_0_layout =
         create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eCompute,
             raytracing_pipeline_set_0_binding);
-    vk::PipelineLayout raytracing_pipeline_layout =
-        create_pipeline_layout(dev, {raytracing_pipeline_set_0_layout});
+    vk::DescriptorSetLayout raytracing_pipeline_set_1_layout =
+        create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eCompute,
+            raytracing_pipeline_set_1_binding,
+            vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool);
+    vk::PipelineLayout raytracing_pipeline_layout = create_pipeline_layout(dev,
+        {raytracing_pipeline_set_0_layout, raytracing_pipeline_set_1_layout});
     std::vector<vk::DescriptorSet> raytracing_pipeline_set_0s =
-        create_descriptor_set(dev, descriptor_pool,
+        create_descriptor_set(dev, default_descriptor_pool,
             raytracing_pipeline_set_0_layout, FRAME_IN_FLIGHT);
+    std::vector<vk::DescriptorSet> raytracing_pipeline_set_1s =
+        create_descriptor_set(dev, descriptor_indexing_pool,
+            raytracing_pipeline_set_1_layout, FRAME_IN_FLIGHT,
+            (uint32_t) texture_datas.size());
     /////////////////////////////////////
     ///* Initialization: Descriptors *///
     /////////////////////////////////////
@@ -260,8 +306,8 @@ int main() {
     ///* Initialization: Image, Buffer *///
     ///////////////////////////////////////
     vk::Sampler default_sampler = create_default_sampler(dev);
-    vma_image accumulation_image;
-    vk::ImageView accumulation_image_view;
+    std::array<vma_image, FRAME_IN_FLIGHT> accumulation_images{};
+    std::array<std::vector<vma_image>, FRAME_IN_FLIGHT> textures{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> camera_buffers{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> sphere_buffers{};
     {
@@ -274,37 +320,64 @@ int main() {
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
         };
         VK_CHECK(result, command_buffer.begin(begin_info));
-        std::tie(accumulation_image, accumulation_image_view) =
-            create_texture2d_simple(dev, vma_alloc, command_buffer, win_width,
-                win_height, vk::Format::eR32G32B32A32Sfloat,
-                std::vector<uint32_t>{
-                    queues.compute_queue_idx,
-                    queues.graphics_queue_idx,
-                },
-                vk::ImageUsageFlagBits::eStorage |
-                    vk::ImageUsageFlagBits::eTransferDst);
-        for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
-            camera_buffers[i] = create_gpu_only_buffer(vma_alloc,
+        for (uint32_t frame_idx = 0; frame_idx < FRAME_IN_FLIGHT; ++frame_idx) {
+            accumulation_images[frame_idx] =
+                create_texture2d_simple(dev, vma_alloc, command_buffer,
+                    win_width, win_height, vk::Format::eR32G32B32A32Sfloat,
+                    std::vector<uint32_t>{
+                        queues.compute_queue_idx,
+                        queues.graphics_queue_idx,
+                    },
+                    vk::ImageUsageFlagBits::eStorage |
+                        vk::ImageUsageFlagBits::eTransferDst |
+                        vk::ImageUsageFlagBits::eTransferSrc);
+            camera_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
                 (uint32_t) sizeof(glsl_camera), {},
                 vk::BufferUsageFlagBits::eUniformBuffer);
-            sphere_buffers[i] = create_gpu_only_buffer(vma_alloc,
+            sphere_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
                 (uint32_t) (spheres.size() * sizeof(glsl_sphere)), {},
                 vk::BufferUsageFlagBits::eUniformBuffer);
-            update_buffer(vma_alloc, command_buffer, sphere_buffers[i],
+            update_buffer(vma_alloc, command_buffer, sphere_buffers[frame_idx],
                 to_span(spheres), 0);
+            // textures
+            textures[frame_idx].reserve(texture_datas.size());
+            for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
+                 ++texture_idx) {
+                textures[frame_idx].push_back(create_texture2d_simple(dev,
+                    vma_alloc, command_buffer, texture_datas[texture_idx].width,
+                    texture_datas[texture_idx].height,
+                    vk::Format::eR8G8B8A8Unorm, {},
+                    vk::ImageUsageFlagBits::eSampled |
+                        vk::ImageUsageFlagBits::eTransferDst));
+                update_texture2d_simple(vma_alloc,
+                    textures[frame_idx][texture_idx], command_buffer,
+                    texture_datas[texture_idx]);
+            }
             // graphics pipeline set 0
             update_descriptor_image_sampler_combined(dev,
-                graphics_pipeline_set_0s[i], 0, 0, default_sampler,
-                accumulation_image_view);
-            update_descriptor_uniform_buffer_whole(
-                dev, graphics_pipeline_set_0s[i], 1, 0, camera_buffers[i]);
+                graphics_pipeline_set_0s[frame_idx], 0, 0, default_sampler,
+                accumulation_images[frame_idx].primary_view);
+            update_descriptor_uniform_buffer_whole(dev,
+                graphics_pipeline_set_0s[frame_idx], 1, 0,
+                camera_buffers[frame_idx]);
             // raytracing pipeline set 0
-            update_descriptor_storage_image(dev, raytracing_pipeline_set_0s[i],
-                0, 0, accumulation_image_view);
-            update_descriptor_uniform_buffer_whole(
-                dev, raytracing_pipeline_set_0s[i], 1, 0, camera_buffers[i]);
-            update_descriptor_uniform_buffer_whole(
-                dev, raytracing_pipeline_set_0s[i], 2, 0, sphere_buffers[i]);
+            update_descriptor_storage_image(dev,
+                raytracing_pipeline_set_0s[frame_idx], 0, 0,
+                accumulation_images[frame_idx].primary_view);
+            update_descriptor_uniform_buffer_whole(dev,
+                raytracing_pipeline_set_0s[frame_idx], 1, 0,
+                camera_buffers[frame_idx]);
+            update_descriptor_uniform_buffer_whole(dev,
+                raytracing_pipeline_set_0s[frame_idx], 2, 0,
+                sphere_buffers[frame_idx]);
+            // raytracing pipeline set 1
+            for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
+                 ++texture_idx) {
+                update_descriptor_image_sampler_combined(dev,
+                    raytracing_pipeline_set_1s[frame_idx], 0, texture_idx,
+                    default_sampler,
+                    textures[frame_idx][texture_idx].primary_view);
+            }
         }
         VK_CHECK(result, command_buffer.end());
         vk::SubmitInfo const submit_info{
@@ -353,10 +426,10 @@ int main() {
         };
         std::array const raytracing_pipieline_sets{
             raytracing_pipeline_set_0s[frame_sync_idx],
+            raytracing_pipeline_set_1s[frame_sync_idx],
         };
-        glsl_camera const glsl_camera =
-            get_glsl_camera(camera, win_width, win_height);
         vma_buffer camera_buffer = camera_buffers[frame_sync_idx];
+        vma_image accumulation_image = accumulation_images[frame_sync_idx];
 
         /////////////////////////////
         ///* Raytracing Pipeline *///
@@ -365,36 +438,60 @@ int main() {
         VK_CHECK(result, dev.resetFences(1, &raytracing_fence));
         VK_CHECK(result, raytracing_command_buffer.reset());
         VK_CHECK(result, raytracing_command_buffer.begin(begin_info));
+        vk::ImageSubresourceRange const whole_range{
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+        vk::ImageSubresourceLayers const whole_layer{
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
         if (camera.dirty) {
             camera.dirty = false;
             camera.frame_counter = 1;
-            vk::ClearColorValue accumulation_clear_value{};
-            accumulation_clear_value.setFloat32({0.0f, 0.0f, 0.0f, 1.0f});
-            vk::ImageSubresourceRange const range{
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            };
+            std::array const black{0.0f, 0.0f, 0.0f, 1.0f};
+            vk::ClearColorValue accumulation_clear_value{.float32 = black};
             raytracing_command_buffer.clearColorImage(accumulation_image.image,
                 vk::ImageLayout::eGeneral, &accumulation_clear_value, 1,
-                &range);
-            vk::ImageMemoryBarrier const barrier{
-                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-                .dstAccessMask = vk::AccessFlagBits::eShaderRead,
-                .oldLayout = vk::ImageLayout::eGeneral,
-                .newLayout = vk::ImageLayout::eGeneral,
-                .srcQueueFamilyIndex = queues.compute_queue_idx,
-                .dstQueueFamilyIndex = queues.compute_queue_idx,
-                .image = accumulation_image.image,
-                .subresourceRange = range,
+                &whole_range);
+        } else {
+            vma_image previous_accumulation_image =
+                accumulation_images[(frame_counter - 1) % FRAME_IN_FLIGHT];
+            vk::ImageCopy const image_copy{
+                .srcSubresource = whole_layer,
+                .srcOffset = vk::Offset3D{                       0,0, 0                                                                   },
+                .dstSubresource = whole_layer,
+                .dstOffset = vk::Offset3D{                       0, 0, 0},
+                .extent = vk::Extent3D{accumulation_image.width,
+                                          accumulation_image.height, 1  },
             };
-            raytracing_command_buffer.pipelineBarrier(
-                vk::PipelineStageFlagBits::eTransfer,
-                vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 0,
-                nullptr, 1, &barrier);
+            raytracing_command_buffer.copyImage(
+                previous_accumulation_image.image, vk::ImageLayout::eGeneral,
+                accumulation_image.image, vk::ImageLayout::eGeneral, 1,
+                &image_copy);
         }
+        vk::ImageMemoryBarrier const barrier{
+            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+            .dstAccessMask = vk::AccessFlagBits::eShaderRead |
+                             vk::AccessFlagBits::eShaderWrite,
+            .oldLayout = vk::ImageLayout::eGeneral,
+            .newLayout = vk::ImageLayout::eGeneral,
+            .srcQueueFamilyIndex = queues.compute_queue_idx,
+            .dstQueueFamilyIndex = queues.compute_queue_idx,
+            .image = accumulation_image.image,
+            .subresourceRange = whole_range,
+        };
+        raytracing_command_buffer.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 0,
+            nullptr, 1, &barrier);
+        glsl_camera const glsl_camera =
+            get_glsl_camera(camera, win_width, win_height);
         update_buffer(vma_alloc, raytracing_command_buffer, camera_buffer,
             to_span(glsl_camera), 0);
         vk::BufferMemoryBarrier const camera_buffer_barrier{
@@ -496,7 +593,7 @@ int main() {
         };
         std::array<vk::PipelineStageFlags, 2> const graphics_submit_wait_stages{
             vk::PipelineStageFlagBits::eColorAttachmentOutput,
-            vk::PipelineStageFlagBits::eFragmentShader,
+            vk::PipelineStageFlagBits::eComputeShader,
         };
         vk::SubmitInfo const graphics_submit_info{
             .waitSemaphoreCount =
@@ -542,12 +639,15 @@ int main() {
     glfwTerminate();
     VK_CHECK(result, dev.waitIdle());
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
+        destroy_image(dev, vma_alloc, accumulation_images[i]);
         destory_buffer(vma_alloc, camera_buffers[i]);
         destory_buffer(vma_alloc, sphere_buffers[i]);
+        for (auto const& t : textures[i]) {
+            destroy_image(dev, vma_alloc, t);
+        }
     }
-    dev.destroyImageView(accumulation_image_view);
-    destroy_image(vma_alloc, accumulation_image);
     cleanup_staging_buffer(vma_alloc);
+    cleanup_staging_image(vma_alloc);
     dev.destroySampler(default_sampler);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         dev.destroyFence(render_fences[i]);
@@ -562,7 +662,9 @@ int main() {
     dev.destroyPipelineLayout(raytracing_pipeline_layout);
     dev.destroyDescriptorSetLayout(graphics_pipeline_set_0_layout);
     dev.destroyDescriptorSetLayout(raytracing_pipeline_set_0_layout);
-    dev.destroyDescriptorPool(descriptor_pool);
+    dev.destroyDescriptorSetLayout(raytracing_pipeline_set_1_layout);
+    dev.destroyDescriptorPool(descriptor_indexing_pool);
+    dev.destroyDescriptorPool(default_descriptor_pool);
     dev.destroyCommandPool(graphics_command_pool);
     dev.destroyCommandPool(raytracing_command_pool);
     for (auto const framebuffer : framebuffers) {
@@ -632,16 +734,19 @@ void process_input(GLFWwindow* window, camera& camera, float delta_time) {
 }
 
 constexpr std::pair<uint32_t, uint32_t> get_frame_size1() {
-    return std::make_pair(800, 600);
+    return std::make_pair(1366, 768);
 }
 
-std::pair<camera, std::vector<glsl_sphere>> get_scene1(
-    uint32_t frame_width, uint32_t frame_height) {
+std::tuple<camera, std::vector<glsl_sphere>, std::vector<texture_data>>
+    get_scene1(uint32_t frame_width, uint32_t frame_height) {
     std::vector<glsl_sphere> spheres{};
+    std::vector<texture_data> texture_datas{};
     glsl_material const material_ground =
         create_lambertian(glm::vec3{0.8f, 0.8f, 0.0f});
-    glsl_material const material_center =
-        create_lambertian(glm::vec3{0.1f, 0.2f, 0.5f});
+    // glsl_material const material_center =
+    //     create_lambertian(glm::vec3{0.1f, 0.2f, 0.5f});
+    glsl_material const material_center = create_lambertian(
+        PATH_FROM_ROOT("assets/textures/earthmap.jpg"), texture_datas);
     glsl_material const material_left = create_dielectric(1.5f);
     glsl_material const material_right =
         create_metal(glm::vec3{0.8f, 0.6f, 0.2f}, 0.0f);
@@ -657,5 +762,5 @@ std::pair<camera, std::vector<glsl_sphere>> get_scene1(
         create_sphere(glm::vec3{1.0f, 0.0f, -1.0f}, 0.5f, material_right));
     camera const camera = create_camera(glm::vec3{-2.0f, 2.0f, 1.0f},
         glm::vec3{0.0f, 0.0f, -1.0f}, 20.0f, frame_width, frame_height);
-    return std::make_pair(camera, spheres);
+    return std::make_tuple(camera, spheres, std::move(texture_datas));
 }

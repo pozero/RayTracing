@@ -1,5 +1,8 @@
 #pragma once
 
+#include <vector>
+#include <string_view>
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Weverything"
 #include "glm/vec2.hpp"
@@ -19,9 +22,12 @@ struct glsl_material {
     alignas(sizeof(glm::vec4)) glm::vec3 albedo;
     float fuzz;
     float refraction_index;
+    int albedo_texture;
 };
 
 glsl_material create_lambertian(glm::vec3 const& albedo);
+glsl_material create_lambertian(std::string_view texture_path,
+    std::vector<struct texture_data>& texture_datas);
 glsl_material create_metal(glm::vec3 const& albedo, float fuzz);
 glsl_material create_dielectric(float refraction_index);
 

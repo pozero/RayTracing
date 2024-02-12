@@ -89,6 +89,18 @@ void update_buffer(VmaAllocator vma_alloc, vk::CommandBuffer command_buffer,
             staging_buffers.push_back(staging);
         } else {
             staging = staging_buffers[fitted_staging_idx];
+            vk::BufferMemoryBarrier const barrier{
+                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+                .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
+                .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+                .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+                .buffer = staging.buffer,
+                .offset = 0,
+                .size = vk::WholeSize,
+            };
+            command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                vk::PipelineStageFlagBits::eTransfer, {}, 0, nullptr, 1,
+                &barrier, 0, nullptr);
         }
         std::copy(data.begin(), data.end(), staging.mapped);
         vmaFlushAllocation(
