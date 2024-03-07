@@ -1,44 +1,53 @@
-float rand_01(const in vec2 co){
-    return fract(sin(dot(co,vec2(12.9898,78.233))) * 43758.5453);
+// Random generator stolen from https://github.com/grigoryoskin/vulkan-compute-ray-tracing/blob/master/resources/shaders/source/include/random.glsl
+
+uint seed = (gl_GlobalInvocationID.x * gl_NumWorkGroups.y + 
+                    gl_GlobalInvocationID.y) * uint(frame_counter);
+
+uint random_seed_step(const in uint r) {
+    return r * 747796405 + 1;
 }
 
-float rand_interval(const in vec2 co,
-                    const in float min,
+float rand_01() {
+    seed = random_seed_step(seed);
+    uint word = ((seed >> ((seed >> 28) + 4)) ^ seed) * 277803737;
+    word = (word >> 22) ^ word;
+    return float(word) / 4294967295.0f;
+}
+
+// float rand_01(const in vec2 co) {
+//    return fract(sin(dot(co,vec2(12.9898,78.233))) * 43758.5453);
+// }
+
+float rand_interval(const in float min,
                     const in float max) {
-    return min + (max - min) * rand_01(co);
+    return min + (max - min) * rand_01();
 }
 
-vec3 rand_vector(const in vec3 v1,
-                 const in vec3 v2) {
-    return vec3(
-        rand_01(v1.xy),
-        rand_01(vec2(v1.z, v2.x)),
-        rand_01(v2.yz)
-    );
+vec3 rand_vector() {
+    return vec3(rand_01(), rand_01(), rand_01());
 }
 
-vec3 rand_vector_in_unit_sphere(const in vec3 v1,
-                                const in vec3 v2) {
-    const vec3 seed = rand_vector(v1, v2);
-    const float theta = 2.0 * PI * seed.x;
-    const float phi = 2.0 * PI * seed.y;
-    return seed.z * vec3(cos(theta) * sin(phi), sin(theta) * sin(phi), cos(phi));
+vec3 rand_vector_in_unit_sphere() {
+    const float r1 = rand_01();
+    const float r2 = rand_01();
+    const float r3 = rand_01();
+    const float phi = 2.0 * PI * r1;
+    const float cos_theta = 1 - 2 * r2;
+    const float sin_theta = 2 * sqrt(r2 * (1 - r2));
+    return r3 * vec3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
 }
 
-vec3 rand_vector_on_unit_sphere(const in vec2 v1,
-                                const in vec2 v2) {
-    const float theta = rand_interval(v1, 0.0, 2 * PI);
-    const float phi = rand_interval(v2, 0.0, 2 * PI);
-    return vec3(cos(theta) * sin(phi), 
-                sin(theta) * sin(phi), 
-                cos(phi));
+vec3 rand_vector_on_unit_sphere() {
+    const float r1 = rand_01();
+    const float r2 = rand_01();
+    const float phi = 2.0 * PI * r1;
+    const float cos_theta = 1 - 2 * r2;
+    const float sin_theta = 2 * sqrt(r2 * (1 - r2));
+    return vec3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
 }
 
-vec3 rand_vector_on_hemisphere(const in vec2 v1,
-                               const in vec2 v2,
-                               const in vec3 normal) {
-    const vec3 random_unit_vector = rand_vector_on_unit_sphere(v1, v2);
+vec3 rand_vector_on_hemisphere(const in vec3 normal) {
+    const vec3 random_unit_vector = rand_vector_on_unit_sphere();
     return dot(random_unit_vector, normal) <= 0.0 ? -random_unit_vector : 
                                                     random_unit_vector;
 }
-

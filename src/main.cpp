@@ -255,6 +255,9 @@ int main() {
              vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending,
              },
     };
+    struct raytracing_pipeline_push_constants {
+        uint32_t frame_counter;
+    };
     vk::DescriptorSetLayout raytracing_pipeline_set_0_layout =
         create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eCompute,
             raytracing_pipeline_set_0_binding);
@@ -263,6 +266,8 @@ int main() {
             raytracing_pipeline_set_1_binding,
             vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool);
     vk::PipelineLayout raytracing_pipeline_layout = create_pipeline_layout(dev,
+        (uint32_t) sizeof(raytracing_pipeline_push_constants),
+        vk::ShaderStageFlagBits::eCompute,
         {raytracing_pipeline_set_0_layout, raytracing_pipeline_set_1_layout});
     std::vector<vk::DescriptorSet> raytracing_pipeline_set_0s =
         create_descriptor_set(dev, default_descriptor_pool,
@@ -478,6 +483,10 @@ int main() {
         };
         vma_buffer camera_buffer = camera_buffers[frame_sync_idx];
         vma_image accumulation_image;
+        raytracing_pipeline_push_constants const
+            raytracing_pipeline_push_constants{
+                .frame_counter = frame_counter,
+            };
 
         /////////////////////////////
         ///* Raytracing Pipeline *///
@@ -547,6 +556,10 @@ int main() {
             raytracing_pipieline_sets.data(), 0, nullptr);
         raytracing_command_buffer.bindPipeline(
             vk::PipelineBindPoint::eCompute, raytracing_pipeline);
+        raytracing_command_buffer.pushConstants(raytracing_pipeline_layout,
+            vk::ShaderStageFlagBits::eCompute, 0,
+            sizeof(raytracing_pipeline_push_constants),
+            &raytracing_pipeline_push_constants);
         raytracing_command_buffer.dispatch(win_width, win_height, 1);
         VK_CHECK(result, raytracing_command_buffer.end());
         std::array raytracing_pipeline_signal_semaphores{

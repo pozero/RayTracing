@@ -9,6 +9,10 @@ layout(constant_id = 1) const uint TRIANGLE_VERTEX_COUNT = 1;
 layout(constant_id = 2) const uint TRIANGLE_COUNT = 1;
 layout(constant_id = 3) const uint TRIANGLE_MATERIAL_COUNT = 1;
 
+layout(push_constant, std430) uniform push_constants {
+    uint frame_counter;
+};
+
 #include "material.glsl"
 #include "geometry.glsl"
 #include "random.glsl"
@@ -108,8 +112,8 @@ void main() {
                  tex_coord.x * pixel_delta_u + 
                  tex_coord.y * pixel_delta_v;
 
-    const float sample_offset_x = -0.5 + rand_01(vec2(gl_GlobalInvocationID.x, accumulated_scalar));
-    const float sample_offset_y = -0.5 + rand_01(vec2(gl_GlobalInvocationID.y, accumulated_scalar));
+    const float sample_offset_x = -0.5 + rand_01();
+    const float sample_offset_y = -0.5 + rand_01();
     const vec3 pixel_sample_offset = sample_offset_x * pixel_delta_u + 
                                      sample_offset_y * pixel_delta_v;
     const vec3 pixel_sample = pixel + pixel_sample_offset;
@@ -311,9 +315,7 @@ vec3 scatter(inout ray_t ray,
     switch (hit_record.material.type) {
         case MATERIAL_LAMBERTIAN:
             ray.origin = hit_record.point;
-            ray.direction = normalize(hit_record.normal + 
-                                      rand_vector_on_unit_sphere(hit_record.point.xy,
-                                                                 hit_record.point.xz));
+            ray.direction = normalize(hit_record.normal + rand_vector_on_unit_sphere());
             if (near_zero(ray.direction)) {
                 ray.direction = hit_record.normal;
             }
@@ -324,9 +326,7 @@ vec3 scatter(inout ray_t ray,
         case MATERIAL_METAL:
             ray.origin = hit_record.point;
             const vec3 reflected = reflect(ray.direction, hit_record.normal) + 
-                                   hit_record.material.fuzz *
-                                       rand_vector_on_unit_sphere(hit_record.point.xy,
-                                                                 hit_record.point.xz);
+                                   hit_record.material.fuzz * rand_vector_on_unit_sphere();
             ray.direction = reflected;
             return hit_record.material.albedo.xyz;
         case MATERIAL_DIELECTRIC:
@@ -337,7 +337,7 @@ vec3 scatter(inout ray_t ray,
             const float cos_theta = min(dot(-ray.direction, hit_record.normal), 1.0);
             const float sin_theta = sqrt(1 - cos_theta * cos_theta);
             if (refraction_ratio * sin_theta > 1.0 ||
-                reflectance(cos_theta, refraction_ratio) > rand_01(hit_record.point.xy)) {
+                reflectance(cos_theta, refraction_ratio) > rand_01()) {
                 ray.direction = reflect(ray.direction, hit_record.normal);
             } else {
                 ray.direction = refract(ray.direction, 
@@ -346,7 +346,8 @@ vec3 scatter(inout ray_t ray,
             }
             return vec3(1.0, 1.0, 1.0);
         case MATERIAL_DIFFUSE_LIGHT:
-            return hit_record.material.albedo.xyz;
+            return hit_record.front_face ? hit_record.material.albedo.xyz : 
+                                           vec3(0.0, 0.0, 0.0);
     }
 }
 
