@@ -54,12 +54,17 @@ std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
     std::vector<texture_data>>
     get_scene2(uint32_t frame_width, uint32_t frame_height);
 
+constexpr std::pair<uint32_t, uint32_t> get_frame_size3();
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
+    std::vector<texture_data>>
+    get_scene3(uint32_t frame_width, uint32_t frame_height);
+
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 int main() {
     //////////////////////////////
     ///* Initialization: GLFW *///
     //////////////////////////////
-    auto const [win_width, win_height] = get_frame_size2();
+    auto const [win_width, win_height] = get_frame_size3();
     GLFWwindow* window = glfw_create_window((int) win_width, (int) win_height);
     //////////////////////////////
     ///* Initialization: GLFW *///
@@ -203,7 +208,7 @@ int main() {
     ///* Prepare Scene Data *///
     ////////////////////////////
     auto [camera, spheres, triangle_mesh, texture_datas] =
-        get_scene2(win_width, win_height);
+        get_scene3(win_width, win_height);
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
@@ -834,5 +839,39 @@ std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
         glm::vec3{0.0f, 0.0f, -4.0f}, lower_teal);
     camera const camera = create_camera(glm::vec3{0.0f, 0.0f, 9.0f},
         glm::vec3{0.0f, 0.0f, 0.0f}, 80.0f, frame_width, frame_height);
+    return std::make_tuple(camera, spheres, mesh, std::move(texture_datas));
+}
+
+constexpr std::pair<uint32_t, uint32_t> get_frame_size3() {
+    return std::make_pair(800, 800);
+}
+
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
+    std::vector<texture_data>>
+    get_scene3(uint32_t frame_width, uint32_t frame_height) {
+    std::vector<glsl_sphere> spheres{};
+    triangle_mesh mesh{};
+    std::vector<texture_data> texture_datas{};
+    glsl_material const red = create_lambertian(glm::vec3{0.65f, 0.05f, 0.05f});
+    glsl_material const white =
+        create_lambertian(glm::vec3{0.73f, 0.73f, 0.73f});
+    glsl_material const green =
+        create_lambertian(glm::vec3{0.12f, 0.45f, 0.15f});
+    glsl_material const light =
+        create_diffuse_light(glm::vec3{15.0f, 15.0f, 15.0f});
+    add_quad(mesh, glm::vec3{555.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 555.0f, 0.0f},
+        glm::vec3{0.0f, 0.0f, 555.0f}, green);
+    add_quad(mesh, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 555.0f, 0.0f},
+        glm::vec3{0.0f, 0.0f, 555.0f}, red);
+    add_quad(mesh, glm::vec3{343.0f, 554.0f, 332.0f},
+        glm::vec3{-130.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, -105.0f}, light);
+    add_quad(mesh, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{555.0f, 0.0f, 0.0f},
+        glm::vec3{0.0f, 0.0f, 555.0f}, white);
+    add_quad(mesh, glm::vec3{555.0f, 555.0f, 555.0f},
+        glm::vec3{-555.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, -555.0f}, white);
+    add_quad(mesh, glm::vec3{0.0f, 0.0f, 555.0f}, glm::vec3{555.0f, 0.0f, 0.0f},
+        glm::vec3{0.0f, 555.0f, 0.0f}, white);
+    camera const camera = create_camera(glm::vec3{278.0f, 278.0f, -800.0f},
+        glm::vec3{278.0f, 278.0f, 0.0f}, 40.0f, frame_width, frame_height);
     return std::make_tuple(camera, spheres, mesh, std::move(texture_datas));
 }

@@ -3,6 +3,7 @@
 #define MATERIAL_LAMBERTIAN 0
 #define MATERIAL_METAL 1
 #define MATERIAL_DIELECTRIC 2
+#define MATERIAL_DIFFUSE_LIGHT 3
 
 struct material_t {
     vec4 albedo;

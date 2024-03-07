@@ -12,10 +12,11 @@
 #include "glm/geometric.hpp"
 #pragma clang diagnostic pop
 
-enum class material_type {
+enum class material_type : int {
     lambertian,
     metal,
     dielectric,
+    diffuse_light,
 };
 
 struct glsl_material {
@@ -31,6 +32,7 @@ glsl_material create_lambertian(std::string_view texture_path,
     std::vector<struct texture_data>& texture_datas);
 glsl_material create_metal(glm::vec3 const& albedo, float fuzz);
 glsl_material create_dielectric(float refraction_index);
+glsl_material create_diffuse_light(glm::vec3 const& albedo);
 
 struct glsl_sphere {
     glm::vec3 center;

@@ -27,6 +27,13 @@ glsl_material create_dielectric(float refraction_index) {
         {}, 0.0f, refraction_index, -1, material_type::dielectric};
 }
 
+glsl_material create_diffuse_light(glm::vec3 const& albedo) {
+    return glsl_material{
+        glm::vec4{albedo, 1.0f},
+        0.0f, 0.0f, -1, material_type::diffuse_light
+    };
+}
+
 glsl_sphere create_sphere(
     glm::vec3 const& center, float radius, glsl_material const& material) {
     return glsl_sphere{
