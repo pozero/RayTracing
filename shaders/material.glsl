@@ -5,14 +5,14 @@
 #define MATERIAL_DIELECTRIC 2
 
 struct material_t {
-    int type;
-    vec3 albedo;
+    vec4 albedo;
     float fuzz;
     float refraction_index;
     int albedo_texture;
+    int type;
 };
 
 material_t empty_material() {
-    return material_t(0, vec3(0.0, 0.0, 0.0), 0.0, 0.0, -1);
+    return material_t(vec4(0.0, 0.0, 0.0, 1.0), 0.0, 0.0, -1, -1);
 }
 

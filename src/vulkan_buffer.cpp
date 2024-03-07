@@ -96,35 +96,9 @@ void update_buffer(VmaAllocator vma_alloc, vk::CommandBuffer command_buffer,
         vmaFlushAllocation(
             vma_alloc, buffer.allocation, offset, (uint32_t) data.size());
     } else {
-        vma_buffer staging;
-        uint32_t fitted_staging_idx = (uint32_t) staging_buffers.size();
-        for (uint32_t i = 0; i < staging_buffers.size(); ++i) {
-            if (staging_buffers[i].size >= data.size() &&
-                (fitted_staging_idx == data.size() ||
-                    staging_buffers[fitted_staging_idx].size >
-                        staging_buffers[i].size)) {
-                fitted_staging_idx = i;
-            }
-        }
-        if (fitted_staging_idx == staging_buffers.size()) {
-            staging = create_staging_buffer(
-                vma_alloc, (uint32_t) data.size(), {vk::QueueFamilyIgnored});
-            staging_buffers.push_back(staging);
-        } else {
-            staging = staging_buffers[fitted_staging_idx];
-            vk::BufferMemoryBarrier const barrier{
-                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-                .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
-                .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-                .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-                .buffer = staging.buffer,
-                .offset = 0,
-                .size = vk::WholeSize,
-            };
-            command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                vk::PipelineStageFlagBits::eTransfer, {}, 0, nullptr, 1,
-                &barrier, 0, nullptr);
-        }
+        vma_buffer staging = create_staging_buffer(
+            vma_alloc, (uint32_t) data.size(), {vk::QueueFamilyIgnored});
+        staging_buffers.push_back(staging);
         std::copy(data.begin(), data.end(), staging.mapped);
         vmaFlushAllocation(
             vma_alloc, buffer.allocation, 0, (uint32_t) data.size());

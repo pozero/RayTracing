@@ -7,6 +7,7 @@ layout(constant_id = 0) const uint SPHERE_COUNT = 1;
 
 layout(constant_id = 1) const uint TRIANGLE_VERTEX_COUNT = 1;
 layout(constant_id = 2) const uint TRIANGLE_COUNT = 1;
+layout(constant_id = 3) const uint TRIANGLE_MATERIAL_COUNT = 1;
 
 #include "material.glsl"
 #include "geometry.glsl"
@@ -83,6 +84,7 @@ layout(std430, set = 0, binding = 1) uniform camera {
 };
 
 layout(std430, set = 0, binding = 2) uniform sphere_geometries {
+// + 1 to prevent empty buffer error when no sphere presents
     sphere_t spheres[SPHERE_COUNT + 1];
 };
 
@@ -92,6 +94,10 @@ layout(std430, set = 0, binding = 3) uniform triangle_geometries_vertex {
 
 layout(std430, set = 0, binding = 4) uniform triangle_geometries_face {
     triangle_t triangles[TRIANGLE_COUNT + 1];
+};
+
+layout(std430, set = 0, binding = 5) uniform triangle_geometries_materials {
+    material_t triangle_materials[TRIANGLE_MATERIAL_COUNT + 1];
 };
 
 layout(set = 1, binding = 0) uniform sampler2D textures[];
@@ -177,9 +183,9 @@ bool hit_triangle(const in triangle_t triangle,
                   const in float t_min,
                   const in float t_max,
                   out hit_record_t record) {
-    const vec3 a = triangle_vertices[triangle.a].position;
-    const vec3 b = triangle_vertices[triangle.b].position;
-    const vec3 c = triangle_vertices[triangle.c].position;
+    const vec3 a = triangle_vertices[triangle.a].position.xyz;
+    const vec3 b = triangle_vertices[triangle.b].position.xyz;
+    const vec3 c = triangle_vertices[triangle.c].position.xyz;
     // check if the triangle is degenerate
     const vec3 edge1 = b - a;
     const vec3 edge2 = c - a;
@@ -237,16 +243,16 @@ bool hit_triangle(const in triangle_t triangle,
     const float b2 = e2 * inv_det;
     const float t = t_scaled * inv_det;
     //record
-    const vec3 a_normal = triangle_vertices[triangle.a].normal;
-    const vec3 b_normal = triangle_vertices[triangle.b].normal;
-    const vec3 c_normal = triangle_vertices[triangle.c].normal;
+    const vec3 a_normal = triangle_vertices[triangle.a].normal.xyz;
+    const vec3 b_normal = triangle_vertices[triangle.b].normal.xyz;
+    const vec3 c_normal = triangle_vertices[triangle.c].normal.xyz;
     const vec2 a_albedo_uv = triangle_vertices[triangle.a].albedo_uv;
     const vec2 b_albedo_uv = triangle_vertices[triangle.b].albedo_uv;
     const vec2 c_albedo_uv = triangle_vertices[triangle.c].albedo_uv;
     record.point = ray_at(ray, t);
     const vec3 outward_normal = b0 * a_normal + b1 * b_normal + b2 * c_normal;
     hit_record_set_front_face(record, ray, outward_normal);
-    record.material = triangle.material;
+    record.material = triangle_materials[triangle.material];
     record.t = t;
     record.albedo_uv = b0 * a_albedo_uv + b1 * b_albedo_uv + b2 * c_albedo_uv;
     return true;
@@ -314,7 +320,7 @@ vec3 scatter(inout ray_t ray,
             return hit_record.material.albedo_texture >= 0 ? 
                 texture(nonuniformEXT(textures[hit_record.material.albedo_texture]), 
                     hit_record.albedo_uv).rgb :
-                hit_record.material.albedo;
+                hit_record.material.albedo.xyz;
         case MATERIAL_METAL:
             ray.origin = hit_record.point;
             const vec3 reflected = reflect(ray.direction, hit_record.normal) + 

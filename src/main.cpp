@@ -236,6 +236,7 @@ int main() {
             {vk::DescriptorType::eUniformBuffer, 1},
             {vk::DescriptorType::eUniformBuffer, 1},
             {vk::DescriptorType::eUniformBuffer, 1},
+            {vk::DescriptorType::eUniformBuffer, 1},
     };
     std::vector<vk_descriptor_set_binding> const
         raytracing_pipeline_set_1_binding{
@@ -280,7 +281,8 @@ int main() {
         PATH_FROM_BINARY("shaders/raytracer.comp.spv"),
         raytracing_pipeline_layout,
         {(uint32_t) spheres.size(), (uint32_t) triangle_mesh.vertices.size(),
-            (uint32_t) triangle_mesh.triangles.size()});
+            (uint32_t) triangle_mesh.triangles.size(),
+            (uint32_t) triangle_mesh.materials.size()});
     //////////////////////////////////
     ///* Initialization: Pipeline *///
     //////////////////////////////////
@@ -324,6 +326,7 @@ int main() {
     std::array<vma_buffer, FRAME_IN_FLIGHT> sphere_buffers{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_vertex_buffers{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_face_buffers{};
+    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_material_buffers{};
     {
         ++frame_counter;
         vk::Fence const fence = render_fences[0];
@@ -360,6 +363,11 @@ int main() {
                 (uint32_t) (triangle_mesh.triangles.size() *
                             sizeof(glsl_triangle)),
                 {}, vk::BufferUsageFlagBits::eUniformBuffer);
+            triangle_material_buffers[frame_idx] =
+                create_gpu_only_buffer(vma_alloc,
+                    (uint32_t) (triangle_mesh.materials.size() *
+                                sizeof(glsl_material)),
+                    {}, vk::BufferUsageFlagBits::eUniformBuffer);
             update_buffer(vma_alloc, command_buffer, sphere_buffers[frame_idx],
                 to_span(spheres), 0);
             update_buffer(vma_alloc, command_buffer,
@@ -368,6 +376,9 @@ int main() {
             update_buffer(vma_alloc, command_buffer,
                 triangle_face_buffers[frame_idx],
                 to_span(triangle_mesh.triangles), 0);
+            update_buffer(vma_alloc, command_buffer,
+                triangle_material_buffers[frame_idx],
+                to_span(triangle_mesh.materials), 0);
             // textures
             textures[frame_idx].reserve(texture_datas.size());
             for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
@@ -399,6 +410,9 @@ int main() {
             update_descriptor_uniform_buffer_whole(dev,
                 raytracing_pipeline_set_0s[frame_idx], 4, 0,
                 triangle_face_buffers[frame_idx]);
+            update_descriptor_uniform_buffer_whole(dev,
+                raytracing_pipeline_set_0s[frame_idx], 5, 0,
+                triangle_material_buffers[frame_idx]);
             // raytracing pipeline set 1
             for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
                  ++texture_idx) {
@@ -661,6 +675,7 @@ int main() {
         destory_buffer(vma_alloc, sphere_buffers[i]);
         destory_buffer(vma_alloc, triangle_vertex_buffers[i]);
         destory_buffer(vma_alloc, triangle_face_buffers[i]);
+        destory_buffer(vma_alloc, triangle_material_buffers[i]);
         for (auto const& t : textures[i]) {
             destroy_image(dev, vma_alloc, t);
         }

@@ -19,11 +19,11 @@ enum class material_type {
 };
 
 struct glsl_material {
-    material_type type;
-    alignas(sizeof(glm::vec4)) glm::vec3 albedo;
+    glm::vec4 albedo;
     float fuzz;
     float refraction_index;
     int32_t albedo_texture;
+    material_type type;
 };
 
 glsl_material create_lambertian(glm::vec3 const& albedo);
@@ -42,9 +42,9 @@ glsl_sphere create_sphere(
     glm::vec3 const& center, float radius, glsl_material const& material);
 
 struct glsl_triangle_vertex {
-    alignas(sizeof(glm::vec4)) glm::vec3 position;
-    alignas(sizeof(glm::vec4)) glm::vec3 normal;
-    alignas(sizeof(glm::vec4)) glm::vec3 tangent;
+    glm::vec4 position;
+    glm::vec4 normal;
+    glm::vec4 tangent;
     glm::vec2 albedo_uv;
     glm::vec2 normal_uv;
 };
@@ -53,12 +53,13 @@ struct glsl_triangle {
     uint32_t a;
     uint32_t b;
     uint32_t c;
-    glsl_material material;
+    uint32_t material;
 };
 
 struct triangle_mesh {
     std::vector<glsl_triangle_vertex> vertices;
     std::vector<glsl_triangle> triangles;
+    std::vector<glsl_material> materials;
 };
 
 void add_quad(triangle_mesh& mesh, glm::vec3 const& upper_left,
