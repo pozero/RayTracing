@@ -5,6 +5,9 @@
 
 layout(constant_id = 0) const uint SPHERE_COUNT = 1;
 
+layout(constant_id = 1) const uint TRIANGLE_VERTEX_COUNT = 1;
+layout(constant_id = 2) const uint TRIANGLE_COUNT = 1;
+
 #include "material.glsl"
 #include "geometry.glsl"
 #include "random.glsl"
@@ -24,7 +27,7 @@ struct hit_record_t {
     vec3 normal;
     material_t material;
     float t;
-    vec2 uv;
+    vec2 albedo_uv;
     bool front_face;
 };
 
@@ -43,11 +46,19 @@ bool hit_sphere(const in sphere_t sphere,
                 const in float t_max,
                 out hit_record_t record);
 
+bool hit_triangle(const in triangle_t triangle,
+                  const in ray_t ray,
+                  const in float t_min,
+                  const in float t_max,
+                  out hit_record_t record);
+
 vec3 gradient_background(const in vec3 top_color,
                          const in vec3 bottom_color,
                          const in ray_t ray);
 
 bool near_zero(const in vec3 vector);
+
+int max_component_index(const in vec3 vector);
 
 float reflectance(const in float cosine, 
                   const in float refraction_ratio);
@@ -72,7 +83,15 @@ layout(std430, set = 0, binding = 1) uniform camera {
 };
 
 layout(std430, set = 0, binding = 2) uniform sphere_geometries {
-    sphere_t spheres[SPHERE_COUNT];
+    sphere_t spheres[SPHERE_COUNT + 1];
+};
+
+layout(std430, set = 0, binding = 3) uniform triangle_geometries_vertex {
+    triangel_vertex_t triangle_vertices[TRIANGLE_VERTEX_COUNT + 1];
+};
+
+layout(std430, set = 0, binding = 4) uniform triangle_geometries_face {
+    triangle_t triangles[TRIANGLE_COUNT + 1];
 };
 
 layout(set = 1, binding = 0) uniform sampler2D textures[];
@@ -147,10 +166,90 @@ bool hit_sphere(const in sphere_t sphere,
         record.material = sphere.material;
         const float phi = atan(outward_normal.x, outward_normal.z) + PI;
         const float theta = acos(outward_normal.y);
-        record.uv.x = phi * (0.5 * ONE_OVER_PI);
-        record.uv.y = theta * ONE_OVER_PI;
+        record.albedo_uv.x = phi * (0.5 * ONE_OVER_PI);
+        record.albedo_uv.y = theta * ONE_OVER_PI;
         return true;
     }
+}
+
+bool hit_triangle(const in triangle_t triangle,
+                  const in ray_t ray,
+                  const in float t_min,
+                  const in float t_max,
+                  out hit_record_t record) {
+    const vec3 a = triangle_vertices[triangle.a].position;
+    const vec3 b = triangle_vertices[triangle.b].position;
+    const vec3 c = triangle_vertices[triangle.c].position;
+    // check if the triangle is degenerate
+    const vec3 edge1 = b - a;
+    const vec3 edge2 = c - a;
+    if (abs(length(cross(edge1, edge2))) < 1e-8) {
+        return false;
+    }
+    // transform traingle vertices to ray space
+    vec3 at = a - ray.origin;
+    vec3 bt = b - ray.origin;
+    vec3 ct = c - ray.origin;
+    // permute direction and vertices
+    const int kz = max_component_index(ray.direction);
+    const int kx = kz + 1 == 3 ? 0 : kz + 1;
+    const int ky = kx + 1 == 3 ? 0 : kx + 1;
+    const vec3 d = vec3(ray.direction[kx], ray.direction[ky], ray.direction[kz]);
+    at = vec3(at[kx], at[ky], at[kz]);
+    bt = vec3(bt[kx], bt[ky], bt[kz]);
+    ct = vec3(ct[kx], ct[ky], ct[kz]);
+    // shear to +z
+    const float sx = -d.x / d.z;
+    const float sy = -d.y / d.z;
+    const float sz =  1.0 / d.z;
+    at.x += sx * at.z;
+    at.y += sy * at.z;
+    bt.x += sx * bt.z;
+    bt.y += sy * bt.z;
+    ct.x += sx * ct.z;
+    ct.y += sy * ct.z;
+    // compute scaled barycentric coord
+    const float e0 = bt.x * ct.y - bt.y * ct.x;
+    const float e1 = ct.x * at.y - ct.y * at.x;
+    const float e2 = at.x * bt.y - at.y * bt.x;
+    // perform determinant tests
+    if ((e0 < 0 || e1 < 0 || e2 < 0) && (e0 > 0 || e1 > 0 || e2 > 0)) {
+        return false;
+    }
+    const float det = e0 + e1 + e2;
+    if (det == 0) {
+        return false;
+    }
+    at.z *= sz;
+    bt.z *= sz;
+    ct.z *= sz;
+    const float t_scaled = e0 * at.z + e1 * bt.z + e2 * ct.z;
+    // test against t ranger
+    if (det < 0 && (t_scaled >= t_min * det || t_scaled < t_max * det)) {
+        return false;
+    } else if (det > 0 && (t_scaled <= t_min * det || t_scaled > t_max * det)) {
+        return false;
+    }
+    // baricentric coordinate
+    const float inv_det = 1.0 / det;
+    const float b0 = e0 * inv_det;
+    const float b1 = e1 * inv_det;
+    const float b2 = e2 * inv_det;
+    const float t = t_scaled * inv_det;
+    //record
+    const vec3 a_normal = triangle_vertices[triangle.a].normal;
+    const vec3 b_normal = triangle_vertices[triangle.b].normal;
+    const vec3 c_normal = triangle_vertices[triangle.c].normal;
+    const vec2 a_albedo_uv = triangle_vertices[triangle.a].albedo_uv;
+    const vec2 b_albedo_uv = triangle_vertices[triangle.b].albedo_uv;
+    const vec2 c_albedo_uv = triangle_vertices[triangle.c].albedo_uv;
+    record.point = ray_at(ray, t);
+    const vec3 outward_normal = b0 * a_normal + b1 * b_normal + b2 * c_normal;
+    hit_record_set_front_face(record, ray, outward_normal);
+    record.material = triangle.material;
+    record.t = t;
+    record.albedo_uv = b0 * a_albedo_uv + b1 * b_albedo_uv + b2 * c_albedo_uv;
+    return true;
 }
 
 vec3 gradient_background(const in vec3 top_color,
@@ -165,6 +264,13 @@ bool near_zero(const in vec3 vector) {
     return abs(vector.x) < mu &&
            abs(vector.y) < mu &&
            abs(vector.z) < mu;
+}
+
+int max_component_index(const in vec3 vector) {
+    const vec3 abs_vector = abs(vector);
+    return abs_vector.x > abs_vector.y ?
+               (abs_vector.x > abs_vector.z ? 0 : 2) :
+               (abs_vector.y > abs_vector.z ? 1 : 2);
 }
 
 // vec3 reflect(in vec3 v, 
@@ -207,7 +313,7 @@ vec3 scatter(inout ray_t ray,
             }
             return hit_record.material.albedo_texture >= 0 ? 
                 texture(nonuniformEXT(textures[hit_record.material.albedo_texture]), 
-                    hit_record.uv).rgb :
+                    hit_record.albedo_uv).rgb :
                 hit_record.material.albedo;
         case MATERIAL_METAL:
             ray.origin = hit_record.point;
@@ -246,8 +352,14 @@ vec3 brute_force_ray_tracing(in ray_t ray) {
         hit_record_t hit_record = empty_hit_record();
         bool hit_anything = false;
         #pragma optionNV (unroll all)
-        for (int sphere_idx = 0; sphere_idx < SPHERE_COUNT; ++ sphere_idx) {
+        for (uint sphere_idx = 0; sphere_idx < SPHERE_COUNT; ++ sphere_idx) {
             if (hit_sphere(spheres[sphere_idx], ray, t_min, t_max, hit_record)) {
+                t_max = hit_record.t;
+                hit_anything = true;
+            }
+        }
+        for (uint triangle_idx = 0; triangle_idx < TRIANGLE_COUNT; ++ triangle_idx) {
+            if (hit_triangle(triangles[triangle_idx], ray, t_min, t_max, hit_record)) {
                 t_max = hit_record.t;
                 hit_anything = true;
             }

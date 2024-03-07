@@ -45,15 +45,21 @@ GLFWwindow* glfw_create_window(int width, int height);
 void process_input(GLFWwindow* window, camera& camera, float delta_time);
 
 constexpr std::pair<uint32_t, uint32_t> get_frame_size1();
-std::tuple<camera, std::vector<glsl_sphere>, std::vector<texture_data>>
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
+    std::vector<texture_data>>
     get_scene1(uint32_t frame_width, uint32_t frame_height);
+
+constexpr std::pair<uint32_t, uint32_t> get_frame_size2();
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
+    std::vector<texture_data>>
+    get_scene2(uint32_t frame_width, uint32_t frame_height);
 
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 int main() {
     //////////////////////////////
     ///* Initialization: GLFW *///
     //////////////////////////////
-    auto const [win_width, win_height] = get_frame_size1();
+    auto const [win_width, win_height] = get_frame_size2();
     GLFWwindow* window = glfw_create_window((int) win_width, (int) win_height);
     //////////////////////////////
     ///* Initialization: GLFW *///
@@ -196,7 +202,8 @@ int main() {
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
-    auto [camera, spheres, texture_datas] = get_scene1(win_width, win_height);
+    auto [camera, spheres, triangle_mesh, texture_datas] =
+        get_scene2(win_width, win_height);
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
@@ -225,6 +232,8 @@ int main() {
     std::vector<vk_descriptor_set_binding> const
         raytracing_pipeline_set_0_binding{
             { vk::DescriptorType::eStorageImage, 1},
+            {vk::DescriptorType::eUniformBuffer, 1},
+            {vk::DescriptorType::eUniformBuffer, 1},
             {vk::DescriptorType::eUniformBuffer, 1},
             {vk::DescriptorType::eUniformBuffer, 1},
     };
@@ -269,7 +278,9 @@ int main() {
             render_pass);
     vk::Pipeline raytracing_pipeline = create_compute_pipeline(dev,
         PATH_FROM_BINARY("shaders/raytracer.comp.spv"),
-        raytracing_pipeline_layout, {(uint32_t) spheres.size()});
+        raytracing_pipeline_layout,
+        {(uint32_t) spheres.size(), (uint32_t) triangle_mesh.vertices.size(),
+            (uint32_t) triangle_mesh.triangles.size()});
     //////////////////////////////////
     ///* Initialization: Pipeline *///
     //////////////////////////////////
@@ -305,11 +316,14 @@ int main() {
     ///////////////////////////////////////
     ///* Initialization: Image, Buffer *///
     ///////////////////////////////////////
+    create_dummy_buffer(vma_alloc);
     vk::Sampler default_sampler = create_default_sampler(dev);
     std::array<vma_image, FRAME_IN_FLIGHT> accumulation_images{};
     std::array<std::vector<vma_image>, FRAME_IN_FLIGHT> textures{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> camera_buffers{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> sphere_buffers{};
+    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_vertex_buffers{};
+    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_face_buffers{};
     {
         ++frame_counter;
         vk::Fence const fence = render_fences[0];
@@ -337,8 +351,23 @@ int main() {
             sphere_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
                 (uint32_t) (spheres.size() * sizeof(glsl_sphere)), {},
                 vk::BufferUsageFlagBits::eUniformBuffer);
+            triangle_vertex_buffers[frame_idx] =
+                create_gpu_only_buffer(vma_alloc,
+                    (uint32_t) (triangle_mesh.vertices.size() *
+                                sizeof(glsl_triangle_vertex)),
+                    {}, vk::BufferUsageFlagBits::eUniformBuffer);
+            triangle_face_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
+                (uint32_t) (triangle_mesh.triangles.size() *
+                            sizeof(glsl_triangle)),
+                {}, vk::BufferUsageFlagBits::eUniformBuffer);
             update_buffer(vma_alloc, command_buffer, sphere_buffers[frame_idx],
                 to_span(spheres), 0);
+            update_buffer(vma_alloc, command_buffer,
+                triangle_vertex_buffers[frame_idx],
+                to_span(triangle_mesh.vertices), 0);
+            update_buffer(vma_alloc, command_buffer,
+                triangle_face_buffers[frame_idx],
+                to_span(triangle_mesh.triangles), 0);
             // textures
             textures[frame_idx].reserve(texture_datas.size());
             for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
@@ -354,22 +383,22 @@ int main() {
                     texture_datas[texture_idx]);
             }
             // graphics pipeline set 0
-            update_descriptor_image_sampler_combined(dev,
-                graphics_pipeline_set_0s[frame_idx], 0, 0, default_sampler,
-                accumulation_images[frame_idx].primary_view);
             update_descriptor_uniform_buffer_whole(dev,
                 graphics_pipeline_set_0s[frame_idx], 1, 0,
                 camera_buffers[frame_idx]);
             // raytracing pipeline set 0
-            update_descriptor_storage_image(dev,
-                raytracing_pipeline_set_0s[frame_idx], 0, 0,
-                accumulation_images[frame_idx].primary_view);
             update_descriptor_uniform_buffer_whole(dev,
                 raytracing_pipeline_set_0s[frame_idx], 1, 0,
                 camera_buffers[frame_idx]);
             update_descriptor_uniform_buffer_whole(dev,
                 raytracing_pipeline_set_0s[frame_idx], 2, 0,
                 sphere_buffers[frame_idx]);
+            update_descriptor_uniform_buffer_whole(dev,
+                raytracing_pipeline_set_0s[frame_idx], 3, 0,
+                triangle_vertex_buffers[frame_idx]);
+            update_descriptor_uniform_buffer_whole(dev,
+                raytracing_pipeline_set_0s[frame_idx], 4, 0,
+                triangle_face_buffers[frame_idx]);
             // raytracing pipeline set 1
             for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
                  ++texture_idx) {
@@ -429,7 +458,7 @@ int main() {
             raytracing_pipeline_set_1s[frame_sync_idx],
         };
         vma_buffer camera_buffer = camera_buffers[frame_sync_idx];
-        vma_image accumulation_image = accumulation_images[frame_sync_idx];
+        vma_image accumulation_image;
 
         /////////////////////////////
         ///* Raytracing Pipeline *///
@@ -438,58 +467,42 @@ int main() {
         VK_CHECK(result, dev.resetFences(1, &raytracing_fence));
         VK_CHECK(result, raytracing_command_buffer.reset());
         VK_CHECK(result, raytracing_command_buffer.begin(begin_info));
-        vk::ImageSubresourceRange const whole_range{
-            .aspectMask = vk::ImageAspectFlagBits::eColor,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-        vk::ImageSubresourceLayers const whole_layer{
-            .aspectMask = vk::ImageAspectFlagBits::eColor,
-            .mipLevel = 0,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
         if (camera.dirty) {
             camera.dirty = false;
             camera.frame_counter = 1;
+            camera.accumulation_idx =
+                (camera.accumulation_idx + 1) % accumulation_images.size();
+            accumulation_image = accumulation_images[camera.accumulation_idx];
             std::array const black{0.0f, 0.0f, 0.0f, 1.0f};
+            vk::ImageSubresourceRange const whole_range{
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            };
             vk::ClearColorValue accumulation_clear_value{.float32 = black};
             raytracing_command_buffer.clearColorImage(accumulation_image.image,
                 vk::ImageLayout::eGeneral, &accumulation_clear_value, 1,
                 &whole_range);
-        } else {
-            vma_image previous_accumulation_image =
-                accumulation_images[(frame_counter - 1) % FRAME_IN_FLIGHT];
-            vk::ImageCopy const image_copy{
-                .srcSubresource = whole_layer,
-                .srcOffset = vk::Offset3D{                       0,0, 0                                                                   },
-                .dstSubresource = whole_layer,
-                .dstOffset = vk::Offset3D{                       0, 0, 0},
-                .extent = vk::Extent3D{accumulation_image.width,
-                                          accumulation_image.height, 1  },
+            vk::ImageMemoryBarrier const barrier{
+                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+                .dstAccessMask = vk::AccessFlagBits::eShaderRead |
+                                 vk::AccessFlagBits::eShaderWrite,
+                .oldLayout = vk::ImageLayout::eGeneral,
+                .newLayout = vk::ImageLayout::eGeneral,
+                .srcQueueFamilyIndex = queues.compute_queue_idx,
+                .dstQueueFamilyIndex = queues.compute_queue_idx,
+                .image = accumulation_image.image,
+                .subresourceRange = whole_range,
             };
-            raytracing_command_buffer.copyImage(
-                previous_accumulation_image.image, vk::ImageLayout::eGeneral,
-                accumulation_image.image, vk::ImageLayout::eGeneral, 1,
-                &image_copy);
+            raytracing_command_buffer.pipelineBarrier(
+                vk::PipelineStageFlagBits::eTransfer,
+                vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 0,
+                nullptr, 1, &barrier);
+        } else {
+            accumulation_image = accumulation_images[camera.accumulation_idx];
         }
-        vk::ImageMemoryBarrier const barrier{
-            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-            .dstAccessMask = vk::AccessFlagBits::eShaderRead |
-                             vk::AccessFlagBits::eShaderWrite,
-            .oldLayout = vk::ImageLayout::eGeneral,
-            .newLayout = vk::ImageLayout::eGeneral,
-            .srcQueueFamilyIndex = queues.compute_queue_idx,
-            .dstQueueFamilyIndex = queues.compute_queue_idx,
-            .image = accumulation_image.image,
-            .subresourceRange = whole_range,
-        };
-        raytracing_command_buffer.pipelineBarrier(
-            vk::PipelineStageFlagBits::eTransfer,
-            vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 0,
-            nullptr, 1, &barrier);
         glsl_camera const glsl_camera =
             get_glsl_camera(camera, win_width, win_height);
         update_buffer(vma_alloc, raytracing_command_buffer, camera_buffer,
@@ -507,6 +520,8 @@ int main() {
             vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 1,
             &camera_buffer_barrier, 0, nullptr);
+        update_descriptor_storage_image(dev, raytracing_pipieline_sets[0], 0, 0,
+            accumulation_image.primary_view);
         raytracing_command_buffer.bindDescriptorSets(
             vk::PipelineBindPoint::eCompute, raytracing_pipeline_layout, 0,
             (uint32_t) raytracing_pipieline_sets.size(),
@@ -578,6 +593,8 @@ int main() {
         graphics_command_buffer.setViewport(0, 1, &viewport);
         vk::Rect2D const scissor = render_area;
         graphics_command_buffer.setScissor(0, 1, &scissor);
+        update_descriptor_image_sampler_combined(dev, graphics_pipeline_sets[0],
+            0, 0, default_sampler, accumulation_image.primary_view);
         graphics_command_buffer.bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics, graphics_pipeline_layout, 0,
             (uint32_t) graphics_pipeline_sets.size(),
@@ -642,12 +659,15 @@ int main() {
         destroy_image(dev, vma_alloc, accumulation_images[i]);
         destory_buffer(vma_alloc, camera_buffers[i]);
         destory_buffer(vma_alloc, sphere_buffers[i]);
+        destory_buffer(vma_alloc, triangle_vertex_buffers[i]);
+        destory_buffer(vma_alloc, triangle_face_buffers[i]);
         for (auto const& t : textures[i]) {
             destroy_image(dev, vma_alloc, t);
         }
     }
     cleanup_staging_buffer(vma_alloc);
     cleanup_staging_image(vma_alloc);
+    destroy_dummy_buffer(vma_alloc);
     dev.destroySampler(default_sampler);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         dev.destroyFence(render_fences[i]);
@@ -737,9 +757,11 @@ constexpr std::pair<uint32_t, uint32_t> get_frame_size1() {
     return std::make_pair(1366, 768);
 }
 
-std::tuple<camera, std::vector<glsl_sphere>, std::vector<texture_data>>
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
+    std::vector<texture_data>>
     get_scene1(uint32_t frame_width, uint32_t frame_height) {
     std::vector<glsl_sphere> spheres{};
+    triangle_mesh mesh{};
     std::vector<texture_data> texture_datas{};
     glsl_material const material_ground =
         create_lambertian(glm::vec3{0.8f, 0.8f, 0.0f});
@@ -762,5 +784,40 @@ std::tuple<camera, std::vector<glsl_sphere>, std::vector<texture_data>>
         create_sphere(glm::vec3{1.0f, 0.0f, -1.0f}, 0.5f, material_right));
     camera const camera = create_camera(glm::vec3{-2.0f, 2.0f, 1.0f},
         glm::vec3{0.0f, 0.0f, -1.0f}, 20.0f, frame_width, frame_height);
-    return std::make_tuple(camera, spheres, std::move(texture_datas));
+    return std::make_tuple(camera, spheres, mesh, std::move(texture_datas));
+}
+
+constexpr std::pair<uint32_t, uint32_t> get_frame_size2() {
+    return std::make_pair(800, 800);
+}
+
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
+    std::vector<texture_data>>
+    get_scene2(uint32_t frame_width, uint32_t frame_height) {
+    std::vector<glsl_sphere> spheres{};
+    triangle_mesh mesh{};
+    std::vector<texture_data> texture_datas{};
+    glsl_material const left_red =
+        create_lambertian(glm::vec3{1.0f, 0.2f, 0.2f});
+    glsl_material const back_green =
+        create_lambertian(glm::vec3{0.2f, 1.0f, 0.2f});
+    glsl_material const right_blue =
+        create_lambertian(glm::vec3{0.2f, 0.2f, 1.0f});
+    glsl_material const upper_orange =
+        create_lambertian(glm::vec3{1.0f, 0.5f, 0.0f});
+    glsl_material const lower_teal =
+        create_lambertian(glm::vec3{0.2f, 0.8f, 0.8f});
+    add_quad(mesh, glm::vec3{-3.0f, -2.0f, 5.0f}, glm::vec3{0.0f, 0.0f, -4.0f},
+        glm::vec3{0.0f, 4.0f, 0.0f}, left_red);
+    add_quad(mesh, glm::vec3{-2.0f, -2.0f, 0.0f}, glm::vec3{4.0f, 0.0f, 0.0f},
+        glm::vec3{0.0f, 4.0f, 0.0f}, back_green);
+    add_quad(mesh, glm::vec3{3.0f, -2.0f, 1.0f}, glm::vec3{0.0f, 0.0f, 4.0f},
+        glm::vec3{0.0f, 4.0f, 0.0f}, right_blue);
+    add_quad(mesh, glm::vec3{-2.0f, 3.0f, 1.0f}, glm::vec3{4.0f, 0.0f, 0.0f},
+        glm::vec3{0.0f, 0.0f, 4.0f}, upper_orange);
+    add_quad(mesh, glm::vec3{-2.0f, -3.0f, 5.0f}, glm::vec3{4.0f, 0.0f, 0.0f},
+        glm::vec3{0.0f, 0.0f, -4.0f}, lower_teal);
+    camera const camera = create_camera(glm::vec3{0.0f, 0.0f, 9.0f},
+        glm::vec3{0.0f, 0.0f, 0.0f}, 80.0f, frame_width, frame_height);
+    return std::make_tuple(camera, spheres, mesh, std::move(texture_datas));
 }

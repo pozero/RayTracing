@@ -24,6 +24,7 @@ struct camera {
     glm::vec3 v;
 
     uint64_t frame_counter = 1;
+    uint32_t accumulation_idx = 0;
 
     float vertical_field_of_view;
     float focal_length;

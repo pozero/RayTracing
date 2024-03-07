@@ -34,3 +34,7 @@ void update_buffer(VmaAllocator vma_alloc, vk::CommandBuffer command_buffer,
     vma_buffer const& buffer, std::span<const uint8_t> data, uint32_t offset);
 
 void cleanup_staging_buffer(VmaAllocator vma_alloc);
+
+void create_dummy_buffer(VmaAllocator vma_alloc);
+
+void destroy_dummy_buffer(VmaAllocator vma_alloc);
