@@ -74,6 +74,16 @@ file(GLOB_RECURSE
    CPP_SOURCE_FILE
        "${PROJECT_SOURCE_DIR}/src/*.cpp"
        "${PROJECT_SOURCE_DIR}/src/*.h"
+       "${PROJECT_SOURCE_DIR}/src/asset/*.cpp"
+       "${PROJECT_SOURCE_DIR}/src/asset/*.h"
+       "${PROJECT_SOURCE_DIR}/src/raytracer/*.cpp"
+       "${PROJECT_SOURCE_DIR}/src/raytracer/*.h"
+       "${PROJECT_SOURCE_DIR}/src/renderer/*.cpp"
+       "${PROJECT_SOURCE_DIR}/src/renderer/*.h"
+       "${PROJECT_SOURCE_DIR}/src/utils/*.cpp"
+       "${PROJECT_SOURCE_DIR}/src/utils/*.h"
+       "${PROJECT_SOURCE_DIR}/src/vulkan/*.cpp"
+       "${PROJECT_SOURCE_DIR}/src/vulkan/*.h"
 )
 
 target_sources(Raytracing
