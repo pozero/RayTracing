@@ -16,7 +16,7 @@ struct glsl_raytracer_camera {
     float accumulated_scalar;
 };
 
-struct raytracer_camera {
+struct camera {
     glm::vec3 position;
     glm::vec3 lookat;
     glm::vec3 w;
@@ -40,18 +40,16 @@ struct raytracer_camera {
     bool dirty = false;
 };
 
-raytracer_camera create_raytracer_camera(glm::vec3 const& lookfrom,
-    glm::vec3 const& lookat, float vfov, uint32_t frame_width,
-    uint32_t frame_height);
+camera create_camera(glm::vec3 const& lookfrom, glm::vec3 const& lookat,
+    float vfov, uint32_t frame_width, uint32_t frame_height);
 
-void raytracer_camera_rotate(
-    raytracer_camera& camera, float cursor_x, float cursor_y, bool holding);
+void rotate_camera(
+    camera& camera, float cursor_x, float cursor_y, bool holding);
 
-void raytracer_camera_move(raytracer_camera& camera, float delta_time,
-    float along_minus_z, float along_x);
+void move_camera(
+    camera& camera, float delta_time, float along_minus_z, float along_x);
 
-glsl_raytracer_camera get_glsl_raytracer_camera(raytracer_camera const& camera,
-    uint32_t frame_width, uint32_t frame_height);
+glsl_raytracer_camera get_glsl_raytracer_camera(
+    camera const& camera, uint32_t frame_width, uint32_t frame_height);
 
-void update_raytraver_camera(
-    struct GLFWwindow* window, raytracer_camera& camera, float delta_time);
+void update_camera(struct GLFWwindow* window, camera& camera, float delta_time);

@@ -33,11 +33,11 @@ void brute_force_raytracer() {
     inst_layer.push_back("VK_LAYER_KHRONOS_validation");
 #endif
     {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
         uint32_t glfw_required_inst_ext_cnt = 0;
         auto const glfw_required_inst_ext_name =
             glfwGetRequiredInstanceExtensions(&glfw_required_inst_ext_cnt);
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
         std::copy(glfw_required_inst_ext_name,
             glfw_required_inst_ext_name + glfw_required_inst_ext_cnt,
             std::back_inserter(inst_ext));
@@ -409,7 +409,7 @@ void brute_force_raytracer() {
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
             glfwSetWindowShouldClose(window, 1);
         }
-        update_raytraver_camera(window, camera, clock.get_delta_seconds());
+        update_camera(window, camera, clock.get_delta_seconds());
         ///////////////////////
         ///* Process Input *///
         ///////////////////////
