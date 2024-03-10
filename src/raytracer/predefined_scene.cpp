@@ -101,7 +101,7 @@ std::tuple<raytracer_camera, std::vector<glsl_sphere>, triangle_mesh,
     glsl_material const green =
         create_lambertian(glm::vec3{0.12f, 0.45f, 0.15f});
     glsl_material const light =
-        create_diffuse_light(glm::vec3{15.0f, 15.0f, 15.0f});
+        create_diffuse_light(glm::vec3{8.0f, 8.0f, 15.0f});
     add_quad(mesh, glm::vec3{555.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 555.0f, 0.0f},
         glm::vec3{0.0f, 0.0f, 555.0f}, green);
     add_quad(mesh, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 555.0f, 0.0f},

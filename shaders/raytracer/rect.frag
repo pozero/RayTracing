@@ -17,7 +17,7 @@ layout(std430, set = 0, binding = 1) uniform camera {
 };
 
 vec3 gamma_correct(const in vec3 value) {
-    return sqrt(value);
+    return pow(value / (value + vec3(1.0)), vec3(1.0 / 2.2));
 }
 
 void main() {
