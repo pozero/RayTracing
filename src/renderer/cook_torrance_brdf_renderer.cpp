@@ -22,11 +22,11 @@ void cook_torrance_brdf_renderer() {
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
-    camera camera = create_camera(glm::vec3{2.0f, 2.0f, 2.0f},
+    camera camera = create_camera(glm::vec3{0.0f, 0.0f, 1.0f},
         glm::vec3{0.0f, 0.0f, 0.0f}, 90.0f, win_width, win_height);
     triangle_mesh triangle_mesh{};
-    triangulate_sphere(
-        triangle_mesh, create_sphere(glm::vec3{0.0f, 0.0f, 0.0f}, 1.0f, {}), 4);
+    triangulate_sphere(triangle_mesh,
+        create_sphere(glm::vec3{0.0f, 0.0f, 0.0f}, 1.0f, {}), 32);
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
@@ -204,7 +204,7 @@ void cook_torrance_brdf_renderer() {
     vk::Pipeline primary_render_pipeline = create_graphics_pipeline(dev,
         PATH_FROM_BINARY("shaders/cook_torrance.vert.spv"),
         PATH_FROM_BINARY("shaders/cook_torrance.frag.spv"),
-        primary_render_pipeline_layout, render_pass);
+        primary_render_pipeline_layout, render_pass, vk::PolygonMode::eLine);
     //////////////////////////////////
     ///* Initialization: Pipeline *///
     //////////////////////////////////

@@ -5,7 +5,8 @@
 
 vk::Pipeline create_graphics_pipeline(vk::Device device,
     std::string_view vert_path, std::string_view frag_path,
-    vk::PipelineLayout layout, vk::RenderPass render_pass) {
+    vk::PipelineLayout layout, vk::RenderPass render_pass,
+    vk::PolygonMode polygon_mode) {
     vk::Result result;
     vk::Pipeline pipeline;
     vk::ShaderModule vert_module = create_shader_module(device, vert_path);
@@ -61,7 +62,7 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
     vk::PipelineRasterizationStateCreateInfo const rasterization_info{
         .depthClampEnable = vk::False,
         .rasterizerDiscardEnable = vk::False,
-        .polygonMode = vk::PolygonMode::eLine,
+        .polygonMode = polygon_mode,
         .cullMode = vk::CullModeFlagBits::eNone,
         .frontFace = vk::FrontFace::eCounterClockwise,
         .depthBiasEnable = vk::False,

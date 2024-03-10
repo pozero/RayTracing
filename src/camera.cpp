@@ -37,7 +37,8 @@ void rotate_camera(
         camera.yaw += camera.sensitivity * offset_x;
         float const updated_pitch =
             camera.pitch + camera.sensitivity * offset_y;
-        if (updated_pitch > -89.0f && updated_pitch < 89.0f) {
+        if (updated_pitch > -0.5f * glm::pi<float>() &&
+            updated_pitch < 0.5f * glm::pi<float>()) {
             camera.pitch = updated_pitch;
         }
         camera.w[0] = std::cos(camera.yaw) * std::cos(camera.pitch);
