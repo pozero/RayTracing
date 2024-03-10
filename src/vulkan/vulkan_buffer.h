@@ -18,7 +18,7 @@ vma_buffer create_buffer(VmaAllocator vma_alloc, uint32_t size,
     std::vector<uint32_t> const& queues, VkBufferCreateFlags buffer_flags,
     VkBufferUsageFlags usage_flag, VmaAllocationCreateFlags alloc_flags);
 
-void destory_buffer(VmaAllocator vma_alloc, vma_buffer const& buffer);
+void destroy_buffer(VmaAllocator vma_alloc, vma_buffer const& buffer);
 
 vma_buffer create_gpu_only_buffer(VmaAllocator vma_alloc, uint32_t size,
     std::vector<uint32_t> const& queues, vk::BufferUsageFlags usage);

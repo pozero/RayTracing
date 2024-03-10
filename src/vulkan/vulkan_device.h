@@ -31,7 +31,8 @@ vk::SurfaceKHR create_surface(
 std::tuple<vk::Device, vk::PhysicalDevice, vulkan_queues>
     select_physical_device_create_device_queues(vk::Instance inst,
         vk::SurfaceKHR surface, std::span<const char*> dev_ext,
-        const void* dev_creation_pnext) noexcept;
+        const void* dev_creation_pnext,
+        vk::PhysicalDeviceFeatures const& enabled_features) noexcept;
 
 VmaAllocator create_vma_allocator(
     vk::Instance inst, vk::PhysicalDevice phy_dev, vk::Device dev) noexcept;

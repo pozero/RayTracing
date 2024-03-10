@@ -4,7 +4,7 @@ std::pair<uint32_t, uint32_t> get_frame_size1() {
     return std::make_pair(1366, 768);
 }
 
-std::tuple<raytracer_camera, std::vector<glsl_sphere>, triangle_mesh,
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
     std::vector<texture_data>>
     get_scene1(uint32_t frame_width, uint32_t frame_height) {
     std::vector<glsl_sphere> spheres{};
@@ -29,9 +29,8 @@ std::tuple<raytracer_camera, std::vector<glsl_sphere>, triangle_mesh,
         create_sphere(glm::vec3{-1.0f, 0.0f, -1.0f}, -0.4f, material_left));
     spheres.push_back(
         create_sphere(glm::vec3{1.0f, 0.0f, -1.0f}, 0.5f, material_right));
-    raytracer_camera const camera =
-        create_raytracer_camera(glm::vec3{-2.0f, 2.0f, 1.0f},
-            glm::vec3{0.0f, 0.0f, -1.0f}, 20.0f, frame_width, frame_height);
+    camera const camera = create_camera(glm::vec3{-2.0f, 2.0f, 1.0f},
+        glm::vec3{0.0f, 0.0f, -1.0f}, 20.0f, frame_width, frame_height);
     return std::make_tuple(camera, spheres, mesh, std::move(texture_datas));
 }
 
@@ -46,7 +45,7 @@ std::pair<uint32_t, uint32_t> get_frame_size2() {
     return std::make_pair(800, 800);
 }
 
-std::tuple<raytracer_camera, std::vector<glsl_sphere>, triangle_mesh,
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
     std::vector<texture_data>>
     get_scene2(uint32_t frame_width, uint32_t frame_height) {
     std::vector<glsl_sphere> spheres{};
@@ -72,9 +71,8 @@ std::tuple<raytracer_camera, std::vector<glsl_sphere>, triangle_mesh,
         glm::vec3{0.0f, 0.0f, 4.0f}, upper_orange);
     add_quad(mesh, glm::vec3{-2.0f, -3.0f, 5.0f}, glm::vec3{4.0f, 0.0f, 0.0f},
         glm::vec3{0.0f, 0.0f, -4.0f}, lower_teal);
-    raytracer_camera const camera =
-        create_raytracer_camera(glm::vec3{0.0f, 0.0f, 9.0f},
-            glm::vec3{0.0f, 0.0f, 0.0f}, 80.0f, frame_width, frame_height);
+    camera const camera = create_camera(glm::vec3{0.0f, 0.0f, 9.0f},
+        glm::vec3{0.0f, 0.0f, 0.0f}, 80.0f, frame_width, frame_height);
     return std::make_tuple(camera, spheres, mesh, std::move(texture_datas));
 }
 
@@ -89,7 +87,7 @@ std::pair<uint32_t, uint32_t> get_frame_size3() {
     return std::make_pair(800, 800);
 }
 
-std::tuple<raytracer_camera, std::vector<glsl_sphere>, triangle_mesh,
+std::tuple<camera, std::vector<glsl_sphere>, triangle_mesh,
     std::vector<texture_data>>
     get_scene3(uint32_t frame_width, uint32_t frame_height) {
     std::vector<glsl_sphere> spheres{};
@@ -114,9 +112,8 @@ std::tuple<raytracer_camera, std::vector<glsl_sphere>, triangle_mesh,
         glm::vec3{-555.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, -555.0f}, white);
     add_quad(mesh, glm::vec3{0.0f, 0.0f, 555.0f}, glm::vec3{555.0f, 0.0f, 0.0f},
         glm::vec3{0.0f, 555.0f, 0.0f}, white);
-    raytracer_camera const camera =
-        create_raytracer_camera(glm::vec3{278.0f, 278.0f, -800.0f},
-            glm::vec3{278.0f, 278.0f, 0.0f}, 40.0f, frame_width, frame_height);
+    camera const camera = create_camera(glm::vec3{278.0f, 278.0f, -800.0f},
+        glm::vec3{278.0f, 278.0f, 0.0f}, 40.0f, frame_width, frame_height);
     return std::make_tuple(camera, spheres, mesh, std::move(texture_datas));
 }
 
