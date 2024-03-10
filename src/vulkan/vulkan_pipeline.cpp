@@ -61,8 +61,9 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
     vk::PipelineRasterizationStateCreateInfo const rasterization_info{
         .depthClampEnable = vk::False,
         .rasterizerDiscardEnable = vk::False,
-        .polygonMode = vk::PolygonMode::eFill,
+        .polygonMode = vk::PolygonMode::eLine,
         .cullMode = vk::CullModeFlagBits::eNone,
+        .frontFace = vk::FrontFace::eCounterClockwise,
         .depthBiasEnable = vk::False,
         .lineWidth = 1.0f,
     };

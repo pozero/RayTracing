@@ -81,8 +81,10 @@ void brute_force_raytracer() {
         .synchronization2 = VK_TRUE,
     };
     dev_creation_pnext = &synchron2_feature;
-    auto [dev, phy_dev, queues] = select_physical_device_create_device_queues(
-        instance, surface, dev_ext, dev_creation_pnext);
+    vk::PhysicalDeviceFeatures const physical_device_features{};
+    auto [dev, phy_dev, queues] =
+        select_physical_device_create_device_queues(instance, surface, dev_ext,
+            dev_creation_pnext, physical_device_features);
     VkPhysicalDeviceDescriptorIndexingPropertiesEXT descriptor_indexing_properties{
         .sType =
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT,
@@ -647,11 +649,11 @@ void brute_force_raytracer() {
     VK_CHECK(result, dev.waitIdle());
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         destroy_image(dev, vma_alloc, accumulation_images[i]);
-        destory_buffer(vma_alloc, camera_buffers[i]);
-        destory_buffer(vma_alloc, sphere_buffers[i]);
-        destory_buffer(vma_alloc, triangle_vertex_buffers[i]);
-        destory_buffer(vma_alloc, triangle_face_buffers[i]);
-        destory_buffer(vma_alloc, triangle_material_buffers[i]);
+        destroy_buffer(vma_alloc, camera_buffers[i]);
+        destroy_buffer(vma_alloc, sphere_buffers[i]);
+        destroy_buffer(vma_alloc, triangle_vertex_buffers[i]);
+        destroy_buffer(vma_alloc, triangle_face_buffers[i]);
+        destroy_buffer(vma_alloc, triangle_material_buffers[i]);
         for (auto const& t : textures[i]) {
             destroy_image(dev, vma_alloc, t);
         }

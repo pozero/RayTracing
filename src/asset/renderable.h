@@ -10,6 +10,7 @@
 #include "glm/vec4.hpp"
 #include "glm/common.hpp"
 #include "glm/geometric.hpp"
+#include "glm/gtc/matrix_transform.hpp"
 #pragma clang diagnostic pop
 
 enum class material_type : int {
@@ -71,3 +72,6 @@ struct glsl_sky_color {
     glm::vec3 sky_color_top;
     glm::vec3 sky_color_bottom;
 };
+
+void triangulate_sphere(
+    triangle_mesh& mesh, glsl_sphere const& sphere, uint32_t segment_1d);

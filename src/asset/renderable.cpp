@@ -1,3 +1,6 @@
+#include <unordered_map>
+
+#include "check.h"
 #include "asset/texture.h"
 #include "asset/renderable.h"
 
@@ -95,4 +98,110 @@ void add_quad(triangle_mesh& mesh, glm::vec3 const& upper_left,
     mesh.triangles.push_back(t0);
     mesh.triangles.push_back(t1);
     mesh.materials.push_back(material);
+}
+
+void triangulate_sphere(
+    triangle_mesh& mesh, glsl_sphere const& sphere, uint32_t segment_1d) {
+    float constexpr PI = 3.1415926535f;
+    uint32_t const vertex_count_before = (uint32_t) mesh.vertices.size();
+    uint32_t const material_count_before = (uint32_t) mesh.materials.size();
+    auto const transform_position = [&sphere](glm::vec3 const& p) {
+        return glm::vec4{sphere.radius * p + sphere.center, 0.0f};
+    };
+    // top pole
+    mesh.vertices.push_back(glsl_triangle_vertex{
+        .position = transform_position(glm::vec3{0.0f, 1.0f, 0.0f}
+          ),
+        .normal = glm::vec4{0.0f, 1.0f, 0.0f, 0.0f},
+        .tangent = {},
+        .albedo_uv = glm::vec2{0.0f},
+        .normal_uv = {},
+    });
+    for (uint32_t i = 1; i < segment_1d; ++i) {
+        float const y_segment = (float) i / (float) segment_1d;
+        float const phi = PI * y_segment;
+        float const cos_phi = std::cos(phi);
+        float const sin_phi = std::sin(phi);
+        for (uint32_t j = 0; j < segment_1d; ++j) {
+            float const x_segment = (float) j / (float) segment_1d;
+            float const theta = 2.0f * PI * x_segment;
+            float const cos_theta = std::cos(theta);
+            float const sin_theta = std::sin(theta);
+            glm::vec3 const position_on_unit_sphere{
+                cos_theta * sin_phi, cos_phi, sin_theta * sin_phi};
+            glm::vec4 const normal = glm::vec4{position_on_unit_sphere, 0.0f};
+            glm::vec2 const albedo_uv{x_segment, y_segment};
+            mesh.vertices.push_back(glsl_triangle_vertex{
+                .position = transform_position(position_on_unit_sphere),
+                .normal = normal,
+                .tangent = {},
+                .albedo_uv = albedo_uv,
+                .normal_uv = {},
+            });
+        }
+    }
+    // bottom pole
+    mesh.vertices.push_back(glsl_triangle_vertex{
+        .position = transform_position(glm::vec3{0.0f, -1.0f, 0.0f}
+          ),
+        .normal = glm::vec4{0.0f, -1.0f, 0.0f, 0.0f},
+        .tangent = {},
+        .albedo_uv = glm::vec2{1.0f},
+        .normal_uv = {},
+    });
+    // top triangle
+    for (uint32_t i = 1; i <= segment_1d; ++i) {
+        uint32_t const next_i = (i + 1) > segment_1d ? 1 : i + 1;
+        glsl_triangle const t{
+            .a = vertex_count_before + 0,
+            .b = vertex_count_before + i,
+            .c = vertex_count_before + next_i,
+            .material = material_count_before,
+        };
+        mesh.triangles.push_back(t);
+    }
+    // generate CCW index list of sphere triangles
+    // k1--k1+1
+    // |  / |
+    // | /  |
+    // k2--k2+1
+    for (uint32_t i = 1; i < segment_1d - 1; ++i) {
+        uint32_t k1 = (i - 1) * segment_1d + 1;
+        uint32_t k2 = i * segment_1d + 1;
+        for (uint32_t j = 0; j < segment_1d; ++j, ++k1, ++k2) {
+            // k1 -> k2 -> k1 + 1
+            glsl_triangle const t1{
+                .a = vertex_count_before + k1,
+                .b = vertex_count_before + k2,
+                .c = vertex_count_before + k1 + 1,
+                .material = material_count_before,
+            };
+            // k1 + 1 -> k2 -> k2 + 1
+            glsl_triangle const t2{
+                .a = vertex_count_before + k1 + 1,
+                .b = vertex_count_before + k2,
+                .c = vertex_count_before + k2 + 1,
+                .material = material_count_before,
+            };
+            mesh.triangles.push_back(t1);
+            mesh.triangles.push_back(t2);
+        }
+    }
+    // bottom triangle
+    uint32_t const new_vertex_count =
+        (uint32_t) mesh.vertices.size() - vertex_count_before;
+    for (uint32_t i = new_vertex_count - segment_1d - 1;
+         i < new_vertex_count - 1; ++i) {
+        uint32_t next_i = (i + 1) >= new_vertex_count - 1 ?
+                              new_vertex_count - segment_1d - 1 :
+                              i + 1;
+        glsl_triangle const t{
+            .a = vertex_count_before + i,
+            .b = vertex_count_before + new_vertex_count - 1,
+            .c = vertex_count_before + next_i,
+            .material = material_count_before,
+        };
+        mesh.triangles.push_back(t);
+    }
+    mesh.materials.push_back(sphere.material);
 }

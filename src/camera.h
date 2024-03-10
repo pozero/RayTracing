@@ -52,4 +52,7 @@ void move_camera(
 glsl_raytracer_camera get_glsl_raytracer_camera(
     camera const& camera, uint32_t frame_width, uint32_t frame_height);
 
+glm::mat4 get_glsl_render_camera(
+    camera const& camera, uint32_t frame_width, uint32_t frame_height);
+
 void update_camera(struct GLFWwindow* window, camera& camera, float delta_time);

@@ -125,7 +125,8 @@ vk::SurfaceKHR create_surface(
 std::tuple<vk::Device, vk::PhysicalDevice, vulkan_queues>
     select_physical_device_create_device_queues(vk::Instance inst,
         vk::SurfaceKHR surface, std::span<const char*> dev_ext,
-        const void* dev_creation_pnext) noexcept {
+        const void* dev_creation_pnext,
+        vk::PhysicalDeviceFeatures const& enabled_features) noexcept {
     vk::Result result;
     vk::Device ret_dev;
     vk::PhysicalDevice ret_phy_dev;
@@ -239,6 +240,7 @@ std::tuple<vk::Device, vk::PhysicalDevice, vulkan_queues>
             .pQueueCreateInfos = queue_infos.data(),
             .enabledExtensionCount = (uint32_t) dev_ext.size(),
             .ppEnabledExtensionNames = dev_ext.data(),
+            .pEnabledFeatures = &enabled_features,
         }));
     VULKAN_HPP_DEFAULT_DISPATCHER.init(ret_dev);
     ret_queues.graphics_queue =

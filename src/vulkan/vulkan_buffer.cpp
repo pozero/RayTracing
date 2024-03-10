@@ -52,7 +52,7 @@ vma_buffer create_buffer(VmaAllocator vma_alloc, uint32_t size,
         buffer, alloc, (uint8_t*) allocation_result.pMappedData, size};
 }
 
-void destory_buffer(VmaAllocator vma_alloc, vma_buffer const& buffer) {
+void destroy_buffer(VmaAllocator vma_alloc, vma_buffer const& buffer) {
     if (is_dummy(buffer)) {
         return;
     }
@@ -113,7 +113,7 @@ void update_buffer(VmaAllocator vma_alloc, vk::CommandBuffer command_buffer,
 
 void cleanup_staging_buffer(VmaAllocator vma_alloc) {
     for (auto const staging : staging_buffers) {
-        destory_buffer(vma_alloc, staging);
+        destroy_buffer(vma_alloc, staging);
     }
 }
 
