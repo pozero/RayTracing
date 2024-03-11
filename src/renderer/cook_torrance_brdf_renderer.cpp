@@ -22,12 +22,12 @@ void cook_torrance_brdf_renderer() {
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
-    camera camera = create_camera(glm::vec3{0.0f, 0.0f, 15.0f},
+    camera camera = create_camera(glm::vec3{0.0f, 0.0f, 5.0f},
         glm::vec3{0.0f, 0.0f, 0.0f}, 45.0f, win_width, win_height);
     triangle_mesh triangle_mesh{};
     {
-        uint32_t constexpr SPHERE_ROWS = 4;
-        uint32_t constexpr SPHERE_COLUMNS = 4;
+        uint32_t constexpr SPHERE_ROWS = 7;
+        uint32_t constexpr SPHERE_COLUMNS = 7;
         glm::vec4 const albedo{0.5f, 0.0f, 0.0f, 1.0f};
         float const ao = 1.0f;
         float constexpr SPACING = 2.5f;
@@ -131,6 +131,7 @@ void cook_torrance_brdf_renderer() {
     };
     dev_creation_pnext = &synchron2_feature;
     vk::PhysicalDeviceFeatures const physical_device_deature{
+        .sampleRateShading = vk::True,
         .fillModeNonSolid = vk::True,
     };
     auto [dev, phy_dev, queues] =
@@ -146,6 +147,22 @@ void cook_torrance_brdf_renderer() {
     };
     vk::defaultDispatchLoaderDynamic.vkGetPhysicalDeviceProperties2(
         phy_dev, &phy_dev_properties);
+    VkSampleCountFlags const multisample_count_flag =
+        phy_dev_properties.properties.limits.framebufferColorSampleCounts &
+        phy_dev_properties.properties.limits.framebufferDepthSampleCounts;
+    if (multisample_count_flag & VK_SAMPLE_COUNT_64_BIT) {
+        multisample_count = vk::SampleCountFlagBits::e64;
+    } else if (multisample_count_flag & VK_SAMPLE_COUNT_32_BIT) {
+        multisample_count = vk::SampleCountFlagBits::e32;
+    } else if (multisample_count_flag & VK_SAMPLE_COUNT_16_BIT) {
+        multisample_count = vk::SampleCountFlagBits::e16;
+    } else if (multisample_count_flag & VK_SAMPLE_COUNT_8_BIT) {
+        multisample_count = vk::SampleCountFlagBits::e8;
+    } else if (multisample_count_flag & VK_SAMPLE_COUNT_4_BIT) {
+        multisample_count = vk::SampleCountFlagBits::e4;
+    } else if (multisample_count_flag & VK_SAMPLE_COUNT_2_BIT) {
+        multisample_count = vk::SampleCountFlagBits::e2;
+    }
     fmt::println(
         "Selected device: {}", phy_dev.getProperties().deviceName.data());
     ////////////////////////////////
@@ -165,8 +182,9 @@ void cook_torrance_brdf_renderer() {
     ///////////////////////////////////
     prepare_swapchain(phy_dev, surface);
     wait_window(dev, phy_dev, surface, window);
-    auto [swapchain, swapchain_images, swapchain_image_views] =
-        create_swapchain(dev, surface, queues);
+    auto [swapchain, swapchain_images, swapchain_image_views, depth_buffer,
+        color_buffer] = create_swapchain_with_depth_multisampling(dev,
+        vma_alloc, surface, queues);
     ///////////////////////////////////
     ///* Initialization: Swapchain *///
     ///////////////////////////////////
@@ -174,9 +192,12 @@ void cook_torrance_brdf_renderer() {
     /////////////////////////////////////////////////////
     ///* Initialization: Render Pass And Framebuffer *///
     /////////////////////////////////////////////////////
-    vk::RenderPass render_pass = create_render_pass(dev);
+    vk::RenderPass render_pass =
+        create_render_pass_with_depth_multisampling(dev);
     std::vector<vk::Framebuffer> framebuffers =
-        create_framebuffers(dev, render_pass, swapchain_image_views);
+        create_framebuffers_with_depth_multisampling(dev, render_pass,
+            swapchain_image_views, depth_buffer.primary_view,
+            color_buffer.primary_view);
     /////////////////////////////////////////////////////
     ///* Initialization: Render Pass And Framebuffer *///
     /////////////////////////////////////////////////////
@@ -191,12 +212,17 @@ void cook_torrance_brdf_renderer() {
         for (auto const image_view : swapchain_image_views) {
             dev.destroyImageView(image_view);
         }
+        destroy_image(dev, vma_alloc, depth_buffer);
+        destroy_image(dev, vma_alloc, color_buffer);
         swapchain_images.clear();
         dev.destroySwapchainKHR(swapchain);
-        std::tie(swapchain, swapchain_images, swapchain_image_views) =
-            create_swapchain(dev, surface, queues);
-        framebuffers =
-            create_framebuffers(dev, render_pass, swapchain_image_views);
+        std::tie(swapchain, swapchain_images, swapchain_image_views,
+            depth_buffer, color_buffer) =
+            create_swapchain_with_depth_multisampling(
+                dev, vma_alloc, surface, queues);
+        framebuffers = create_framebuffers_with_depth_multisampling(dev,
+            render_pass, swapchain_image_views, depth_buffer.primary_view,
+            color_buffer.primary_view);
     };
 
     /////////////////////////////////////////
@@ -260,7 +286,7 @@ void cook_torrance_brdf_renderer() {
         PATH_FROM_BINARY("shaders/cook_torrance.vert.spv"),
         PATH_FROM_BINARY("shaders/cook_torrance.frag.spv"),
         primary_render_pipeline_layout, render_pass,
-        {(uint32_t) point_lights.size()}, vk::PolygonMode::eFill);
+        {(uint32_t) point_lights.size()}, vk::PolygonMode::eFill, true);
     //////////////////////////////////
     ///* Initialization: Pipeline *///
     //////////////////////////////////
@@ -292,10 +318,10 @@ void cook_torrance_brdf_renderer() {
     ///* Initialization: Image, Buffer *///
     ///////////////////////////////////////
     create_dummy_buffer(vma_alloc);
-    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_vertex_buffers{};
-    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_face_buffers{};
-    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_material_buffers{};
-    std::array<vma_buffer, FRAME_IN_FLIGHT> point_light_buffers{};
+    vma_buffer triangle_vertex_buffer{};
+    vma_buffer triangle_face_buffer{};
+    vma_buffer triangle_material_buffer{};
+    vma_buffer point_light_buffer{};
     {
         ++frame_counter;
         vk::Fence const fence = primary_render_fences[0];
@@ -306,49 +332,43 @@ void cook_torrance_brdf_renderer() {
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
         };
         VK_CHECK(result, command_buffer.begin(begin_info));
+        triangle_vertex_buffer = create_gpu_only_buffer(vma_alloc,
+            (uint32_t) (triangle_mesh.vertices.size() *
+                        sizeof(glsl_triangle_vertex)),
+            {}, vk::BufferUsageFlagBits::eStorageBuffer);
+        triangle_face_buffer = create_gpu_only_buffer(vma_alloc,
+            (uint32_t) (triangle_mesh.triangles.size() * sizeof(glsl_triangle)),
+            {}, vk::BufferUsageFlagBits::eStorageBuffer);
+        triangle_material_buffer = create_gpu_only_buffer(vma_alloc,
+            (uint32_t) (triangle_mesh.cook_torrance_materials.size() *
+                        sizeof(cook_torrance_material)),
+            {}, vk::BufferUsageFlagBits::eStorageBuffer);
+        point_light_buffer = create_gpu_only_buffer(vma_alloc,
+            (uint32_t) (point_lights.size() * sizeof(point_light)), {},
+            vk::BufferUsageFlagBits::eStorageBuffer);
+        update_buffer(vma_alloc, command_buffer, triangle_vertex_buffer,
+            to_span(triangle_mesh.vertices), 0);
+        update_buffer(vma_alloc, command_buffer, triangle_face_buffer,
+            to_span(triangle_mesh.triangles), 0);
+        update_buffer(vma_alloc, command_buffer, triangle_material_buffer,
+            to_span(triangle_mesh.cook_torrance_materials), 0);
+        update_buffer(vma_alloc, command_buffer, point_light_buffer,
+            to_span(point_lights), 0);
         for (uint32_t frame_idx = 0; frame_idx < FRAME_IN_FLIGHT; ++frame_idx) {
-            triangle_vertex_buffers[frame_idx] =
-                create_gpu_only_buffer(vma_alloc,
-                    (uint32_t) (triangle_mesh.vertices.size() *
-                                sizeof(glsl_triangle_vertex)),
-                    {}, vk::BufferUsageFlagBits::eStorageBuffer);
-            triangle_face_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
-                (uint32_t) (triangle_mesh.triangles.size() *
-                            sizeof(glsl_triangle)),
-                {}, vk::BufferUsageFlagBits::eStorageBuffer);
-            triangle_material_buffers[frame_idx] =
-                create_gpu_only_buffer(vma_alloc,
-                    (uint32_t) (triangle_mesh.cook_torrance_materials.size() *
-                                sizeof(cook_torrance_material)),
-                    {}, vk::BufferUsageFlagBits::eStorageBuffer);
-            point_light_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
-                (uint32_t) (point_lights.size() * sizeof(point_light)), {},
-                vk::BufferUsageFlagBits::eStorageBuffer);
-            update_buffer(vma_alloc, command_buffer,
-                triangle_vertex_buffers[frame_idx],
-                to_span(triangle_mesh.vertices), 0);
-            update_buffer(vma_alloc, command_buffer,
-                triangle_face_buffers[frame_idx],
-                to_span(triangle_mesh.triangles), 0);
-            update_buffer(vma_alloc, command_buffer,
-                triangle_material_buffers[frame_idx],
-                to_span(triangle_mesh.cook_torrance_materials), 0);
-            update_buffer(vma_alloc, command_buffer,
-                point_light_buffers[frame_idx], to_span(point_lights), 0);
             // primary render set 0
             update_descriptor_storage_buffer_whole(dev,
                 primary_render_pipeline_set_0s[frame_idx], 0, 0,
-                triangle_vertex_buffers[frame_idx]);
+                triangle_vertex_buffer);
             update_descriptor_storage_buffer_whole(dev,
                 primary_render_pipeline_set_0s[frame_idx], 1, 0,
-                triangle_face_buffers[frame_idx]);
+                triangle_face_buffer);
             // primary render set 1
             update_descriptor_storage_buffer_whole(dev,
                 primary_render_pipeline_set_1s[frame_idx], 0, 0,
-                triangle_material_buffers[frame_idx]);
+                triangle_material_buffer);
             update_descriptor_storage_buffer_whole(dev,
                 primary_render_pipeline_set_1s[frame_idx], 1, 0,
-                point_light_buffers[frame_idx]);
+                point_light_buffer);
         }
         VK_CHECK(result, command_buffer.end());
         vk::SubmitInfo const submit_info{
@@ -434,15 +454,16 @@ void cook_torrance_brdf_renderer() {
             .offset = {0, 0},
             .extent = swapchain_extent,
         };
-        vk::ClearValue const color_clear_val{
-            .color = {std::array{0.0f, 0.0f, 0.0f, 1.0f}},
+        std::array const clear_values{
+            vk::ClearValue{.color = {std::array{0.0f, 0.0f, 0.0f, 1.0f}}},
+            vk::ClearValue{.depthStencil = {1.0f, 0}},
         };
         vk::RenderPassBeginInfo const render_pass_begin_info{
             .renderPass = render_pass,
             .framebuffer = framebuffers[swapchain_image_idx],
             .renderArea = render_area,
-            .clearValueCount = 1,
-            .pClearValues = &color_clear_val,
+            .clearValueCount = (uint32_t) clear_values.size(),
+            .pClearValues = clear_values.data(),
         };
         graphics_command_buffer.beginRenderPass(
             render_pass_begin_info, vk::SubpassContents::eInline);
@@ -525,12 +546,10 @@ void cook_torrance_brdf_renderer() {
     cleanup_staging_buffer(vma_alloc);
     cleanup_staging_image(vma_alloc);
     destroy_dummy_buffer(vma_alloc);
-    for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
-        destroy_buffer(vma_alloc, triangle_vertex_buffers[i]);
-        destroy_buffer(vma_alloc, triangle_face_buffers[i]);
-        destroy_buffer(vma_alloc, triangle_material_buffers[i]);
-        destroy_buffer(vma_alloc, point_light_buffers[i]);
-    }
+    destroy_buffer(vma_alloc, triangle_vertex_buffer);
+    destroy_buffer(vma_alloc, triangle_face_buffer);
+    destroy_buffer(vma_alloc, triangle_material_buffer);
+    destroy_buffer(vma_alloc, point_light_buffer);
     dev.destroyDescriptorPool(default_descriptor_pool);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         dev.destroyFence(primary_render_fences[i]);
@@ -546,6 +565,8 @@ void cook_torrance_brdf_renderer() {
         dev.destroyFramebuffer(framebuffer);
     }
     dev.destroyRenderPass(render_pass);
+    destroy_image(dev, vma_alloc, color_buffer);
+    destroy_image(dev, vma_alloc, depth_buffer);
     for (auto const view : swapchain_image_views) {
         dev.destroyImageView(view);
     }

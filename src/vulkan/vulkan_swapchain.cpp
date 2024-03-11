@@ -1,6 +1,7 @@
 #include "check.h"
 #include "vulkan/vulkan_swapchain.h"
 #include "vulkan/vulkan_device.h"
+#include "vulkan/vulkan_image.h"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Weverything"
@@ -12,6 +13,7 @@ static vk::PresentModeKHR present_mode = vk::PresentModeKHR::eFifo;
 static vk::SurfaceCapabilitiesKHR surface_capabilities{};
 vk::SurfaceFormatKHR surface_format{};
 vk::Extent2D swapchain_extent{};
+vk::SampleCountFlagBits multisample_count = vk::SampleCountFlagBits::e1;
 
 void prepare_swapchain(
     vk::PhysicalDevice physical_dev, vk::SurfaceKHR surface) {
@@ -111,6 +113,200 @@ std::tuple<vk::SwapchainKHR, std::vector<vk::Image>, std::vector<vk::ImageView>>
             device.createImageView(image_view_info, nullptr));
     }
     return std::make_tuple(swapchain, swapchain_images, swapchain_image_views);
+}
+
+std::tuple<vk::SwapchainKHR, std::vector<vk::Image>, std::vector<vk::ImageView>,
+    vma_image>
+    create_swapchain_with_depth(vk::Device device, VmaAllocator vma_alloc,
+        vk::SurfaceKHR surface, vulkan_queues const& queues) {
+    auto const [swapchain, swapchain_images, swapchain_image_views] =
+        create_swapchain(device, surface, queues);
+    vk::Result result;
+    VkImage depth = VK_NULL_HANDLE;
+    VmaAllocation depth_allocation = VK_NULL_HANDLE;
+    vk::ImageView depth_view;
+    VkImageCreateInfo const depth_image_info{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = VK_FORMAT_D32_SFLOAT,
+        .extent =
+            VkExtent3D{
+                       .width = surface_capabilities.currentExtent.width,
+                       .height = surface_capabilities.currentExtent.height,
+                       .depth = 1,
+                       },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    VmaAllocationCreateInfo const allocation_info{
+        .flags = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+    CHECK(vmaCreateImage(vma_alloc, &depth_image_info, &allocation_info, &depth,
+              &depth_allocation, nullptr) == VK_SUCCESS,
+        "");
+    vk::ImageViewCreateInfo const depth_view_info{
+        .image = depth,
+        .viewType = vk::ImageViewType::e2D,
+        .format = vk::Format::eD32Sfloat,
+        .components = vk::ComponentMapping{.r = vk::ComponentSwizzle::eIdentity,
+                                           .g = vk::ComponentSwizzle::eIdentity,
+                                           .b = vk::ComponentSwizzle::eIdentity,
+                                           .a = vk::ComponentSwizzle::eIdentity},
+        .subresourceRange =
+            vk::ImageSubresourceRange{
+                                           .aspectMask = vk::ImageAspectFlagBits::eDepth,
+                                           .baseMipLevel = 0,
+                                           .levelCount = 1,
+                                           .baseArrayLayer = 0,
+                                           .layerCount = 1},
+    };
+    VK_CHECK_CREATE(
+        result, depth_view, device.createImageView(depth_view_info));
+    vma_image const depth_buffer{
+        .image = depth,
+        .allocation = depth_allocation,
+        .width = surface_capabilities.currentExtent.width,
+        .height = surface_capabilities.currentExtent.height,
+        .format = vk::Format::eD32SfloatS8Uint,
+        .mapped = nullptr,
+        .primary_view = depth_view,
+    };
+    return std::make_tuple(
+        swapchain, swapchain_images, swapchain_image_views, depth_buffer);
+}
+
+std::tuple<vk::SwapchainKHR, std::vector<vk::Image>, std::vector<vk::ImageView>,
+    vma_image, vma_image>
+    create_swapchain_with_depth_multisampling(vk::Device device,
+        VmaAllocator vma_alloc, vk::SurfaceKHR surface,
+        vulkan_queues const& queues) {
+    auto const [swapchain, swapchain_images, swapchain_image_views] =
+        create_swapchain(device, surface, queues);
+    vk::Result result;
+    VkImage depth = VK_NULL_HANDLE;
+    VmaAllocation depth_allocation = VK_NULL_HANDLE;
+    vk::ImageView depth_view;
+    VmaAllocationCreateInfo const allocation_info{
+        .flags = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+    {
+        VkImageCreateInfo const depth_image_info{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format = VK_FORMAT_D32_SFLOAT,
+            .extent =
+                VkExtent3D{
+                           .width = surface_capabilities.currentExtent.width,
+                           .height = surface_capabilities.currentExtent.height,
+                           .depth = 1,
+                           },
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = (VkSampleCountFlagBits) multisample_count,
+            .tiling = VK_IMAGE_TILING_OPTIMAL,
+            .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount = 0,
+            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        };
+        CHECK(vmaCreateImage(vma_alloc, &depth_image_info, &allocation_info,
+                  &depth, &depth_allocation, nullptr) == VK_SUCCESS,
+            "");
+        vk::ImageViewCreateInfo const depth_view_info{
+            .image = depth,
+            .viewType = vk::ImageViewType::e2D,
+            .format = vk::Format::eD32Sfloat,
+            .components =
+                vk::ComponentMapping{.r = vk::ComponentSwizzle::eIdentity,
+                                     .g = vk::ComponentSwizzle::eIdentity,
+                                     .b = vk::ComponentSwizzle::eIdentity,
+                                     .a = vk::ComponentSwizzle::eIdentity},
+            .subresourceRange =
+                vk::ImageSubresourceRange{
+                                     .aspectMask = vk::ImageAspectFlagBits::eDepth,
+                                     .baseMipLevel = 0,
+                                     .levelCount = 1,
+                                     .baseArrayLayer = 0,
+                                     .layerCount = 1},
+        };
+        VK_CHECK_CREATE(
+            result, depth_view, device.createImageView(depth_view_info));
+    }
+    vma_image const depth_buffer{
+        .image = depth,
+        .allocation = depth_allocation,
+        .width = surface_capabilities.currentExtent.width,
+        .height = surface_capabilities.currentExtent.height,
+        .format = vk::Format::eD32SfloatS8Uint,
+        .mapped = nullptr,
+        .primary_view = depth_view,
+    };
+    VkImage color = VK_NULL_HANDLE;
+    VmaAllocation color_allocation = VK_NULL_HANDLE;
+    vk::ImageView color_view;
+    {
+        VkImageCreateInfo const color_image_info{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format = (VkFormat) surface_format.format,
+            .extent =
+                VkExtent3D{
+                           .width = surface_capabilities.currentExtent.width,
+                           .height = surface_capabilities.currentExtent.height,
+                           .depth = 1,
+                           },
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = (VkSampleCountFlagBits) multisample_count,
+            .tiling = VK_IMAGE_TILING_OPTIMAL,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                     VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount = 0,
+            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        };
+        CHECK(vmaCreateImage(vma_alloc, &color_image_info, &allocation_info,
+                  &color, &color_allocation, nullptr) == VK_SUCCESS,
+            "");
+        vk::ImageViewCreateInfo const color_view_info{
+            .image = color,
+            .viewType = vk::ImageViewType::e2D,
+            .format = surface_format.format,
+            .components =
+                vk::ComponentMapping{.r = vk::ComponentSwizzle::eIdentity,
+                                     .g = vk::ComponentSwizzle::eIdentity,
+                                     .b = vk::ComponentSwizzle::eIdentity,
+                                     .a = vk::ComponentSwizzle::eIdentity},
+            .subresourceRange =
+                vk::ImageSubresourceRange{
+                                     .aspectMask = vk::ImageAspectFlagBits::eColor,
+                                     .baseMipLevel = 0,
+                                     .levelCount = 1,
+                                     .baseArrayLayer = 0,
+                                     .layerCount = 1},
+        };
+        VK_CHECK_CREATE(
+            result, color_view, device.createImageView(color_view_info));
+    }
+    vma_image const color_buffer{
+        .image = color,
+        .allocation = color_allocation,
+        .width = surface_capabilities.currentExtent.width,
+        .height = surface_capabilities.currentExtent.height,
+        .format = surface_format.format,
+        .mapped = nullptr,
+        .primary_view = color_view,
+    };
+    return std::make_tuple(swapchain, swapchain_images, swapchain_image_views,
+        depth_buffer, color_buffer);
 }
 
 void wait_window(vk::Device device, vk::PhysicalDevice physical_dev,

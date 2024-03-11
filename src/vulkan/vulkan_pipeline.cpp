@@ -7,7 +7,7 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
     std::string_view vert_path, std::string_view frag_path,
     vk::PipelineLayout layout, vk::RenderPass render_pass,
     std::vector<uint32_t> const& frag_specialization_constants,
-    vk::PolygonMode polygon_mode) {
+    vk::PolygonMode polygon_mode, bool enable_depth) {
     vk::Result result;
     vk::Pipeline pipeline;
     vk::ShaderModule vert_module = create_shader_module(device, vert_path);
@@ -25,7 +25,9 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
         .stage = vk::ShaderStageFlagBits::eFragment,
         .module = frag_module,
         .pName = "main",
-        .pSpecializationInfo = &frag_specialization_info,
+        .pSpecializationInfo = frag_specialization_constants.size() > 0 ?
+                                   &frag_specialization_info :
+                                   nullptr,
     };
     std::array const shader_stages{
         vert_stage_info,
@@ -75,7 +77,18 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
         .lineWidth = 1.0f,
     };
     vk::PipelineMultisampleStateCreateInfo const multisampling_info{
-        .sampleShadingEnable = vk::False,
+        .rasterizationSamples = multisample_count,
+        .sampleShadingEnable =
+            multisample_count != vk::SampleCountFlagBits::e1 ? vk::True :
+                                                               vk::False,
+        .minSampleShading = 0.2f,
+    };
+    vk::PipelineDepthStencilStateCreateInfo const depth_stencil_info{
+        .depthTestEnable = enable_depth ? vk::True : vk::False,
+        .depthWriteEnable = enable_depth ? vk::True : vk::False,
+        .depthCompareOp = vk::CompareOp::eLess,
+        .depthBoundsTestEnable = vk::False,
+        .stencilTestEnable = vk::False,
     };
     vk::PipelineColorBlendAttachmentState const blend_attachment_info{
         .blendEnable = vk::False,
@@ -96,6 +109,7 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
         .pViewportState = &viewport_state_info,
         .pRasterizationState = &rasterization_info,
         .pMultisampleState = &multisampling_info,
+        .pDepthStencilState = &depth_stencil_info,
         .pColorBlendState = &blend_info,
         .pDynamicState = &dynamic_state_info,
         .layout = layout,

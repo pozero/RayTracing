@@ -4,7 +4,7 @@ void brute_force_raytracer() {
     //////////////////////////////
     ///* Initialization: GLFW *///
     //////////////////////////////
-    auto const [win_width, win_height] = get_frame_size2();
+    auto const [win_width, win_height] = get_frame_size1();
     GLFWwindow* window = glfw_create_window((int) win_width, (int) win_height);
     //////////////////////////////
     ///* Initialization: GLFW *///
@@ -14,8 +14,8 @@ void brute_force_raytracer() {
     ///* Prepare Scene Data *///
     ////////////////////////////
     auto [camera, spheres, triangle_mesh, texture_datas] =
-        get_scene2(win_width, win_height);
-    glsl_sky_color sky_color = get_sky_color2();
+        get_scene1(win_width, win_height);
+    glsl_sky_color sky_color = get_sky_color1();
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
@@ -234,7 +234,7 @@ void brute_force_raytracer() {
     vk::Pipeline graphics_pipeline =
         create_graphics_pipeline(dev, PATH_FROM_BINARY("shaders/rect.vert.spv"),
             PATH_FROM_BINARY("shaders/rect.frag.spv"), graphics_pipeline_layout,
-            render_pass, {}, vk::PolygonMode::eFill);
+            render_pass, {}, vk::PolygonMode::eFill, false);
     vk::Pipeline raytracing_pipeline = create_compute_pipeline(dev,
         PATH_FROM_BINARY("shaders/raytracer.comp.spv"),
         raytracing_pipeline_layout,
