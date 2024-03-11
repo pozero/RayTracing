@@ -22,11 +22,49 @@ void cook_torrance_brdf_renderer() {
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
-    camera camera = create_camera(glm::vec3{0.0f, 0.0f, 1.0f},
-        glm::vec3{0.0f, 0.0f, 0.0f}, 90.0f, win_width, win_height);
+    camera camera = create_camera(glm::vec3{0.0f, 0.0f, 15.0f},
+        glm::vec3{0.0f, 0.0f, 0.0f}, 45.0f, win_width, win_height);
     triangle_mesh triangle_mesh{};
-    triangulate_sphere(triangle_mesh,
-        create_sphere(glm::vec3{0.0f, 0.0f, 0.0f}, 1.0f, {}), 32);
+    {
+        uint32_t constexpr SPHERE_ROWS = 4;
+        uint32_t constexpr SPHERE_COLUMNS = 4;
+        glm::vec4 const albedo{0.5f, 0.0f, 0.0f, 1.0f};
+        float const ao = 1.0f;
+        float constexpr SPACING = 2.5f;
+        float constexpr RADIUS = 1.0f;
+        for (uint32_t row = 0; row < SPHERE_ROWS; ++row) {
+            float const metallic = (float) row / (float) SPHERE_ROWS;
+            for (uint32_t col = 0; col < SPHERE_COLUMNS; ++col) {
+                float const roughness = std::clamp(
+                    ((float) col / (float) SPHERE_COLUMNS), 0.05f, 1.0f);
+                cook_torrance_material const material{
+                    .albedo = albedo,
+                    .metallic = metallic,
+                    .roughness = roughness,
+                    .ao = ao,
+                };
+                glm::vec3 const center{
+                    ((float) col - ((float) SPHERE_COLUMNS * 0.5f)) * SPACING,
+                    ((float) row - ((float) SPHERE_ROWS * 0.5f)) * SPACING,
+                    0.0f};
+                glsl_sphere const sphere{
+                    .center = center,
+                    .radius = RADIUS,
+                };
+                triangulate_sphere(triangle_mesh, sphere, material, 64);
+            }
+        }
+    }
+    std::vector<point_light> const point_lights{
+        point_light{.position = glm::vec4(-10.0f,  10.0f, 10.0f, 1.0f),
+                    .color = glm::vec4(300.0f, 300.0f, 300.0f, 1.0f)},
+        point_light{ .position = glm::vec4(10.0f,  10.0f, 10.0f, 1.0f),
+                    .color = glm::vec4(300.0f, 300.0f, 300.0f, 1.0f)},
+        point_light{.position = glm::vec4(-10.0f, -10.0f, 10.0f, 1.0f),
+                    .color = glm::vec4(300.0f, 300.0f, 300.0f, 1.0f)},
+        point_light{ .position = glm::vec4(10.0f, -10.0f, 10.0f, 1.0f),
+                    .color = glm::vec4(300.0f, 300.0f, 300.0f, 1.0f)}
+    };
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
@@ -175,8 +213,11 @@ void cook_torrance_brdf_renderer() {
     /////////////////////////////////////
     vk::DescriptorPool default_descriptor_pool = create_descriptor_pool(dev);
     // primary render pipeline
-    struct primary_render_pipeline_push_constants {
+    struct primary_render_pipeline_vertex_push_constant {
         glm::mat4 proj_view;
+    };
+    struct primary_render_pipeline_fragment_push_constant {
+        glm::vec4 camera_position;
     };
     std::vector<vk_descriptor_set_binding> const
         primary_render_pipeline_set_0_binding{
@@ -184,16 +225,30 @@ void cook_torrance_brdf_renderer() {
             {vk::DescriptorType::eStorageBuffer, 1},
             {vk::DescriptorType::eStorageBuffer, 1},
     };
+    std::vector<vk_descriptor_set_binding> const
+        primary_render_pipeline_set_1_binding{
+            {vk::DescriptorType::eStorageBuffer, 1},
+            {vk::DescriptorType::eStorageBuffer, 1},
+    };
     vk::DescriptorSetLayout primary_render_pipeline_set_0_layout =
         create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eVertex,
             primary_render_pipeline_set_0_binding);
+    vk::DescriptorSetLayout primary_render_pipeline_set_1_layout =
+        create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eFragment,
+            primary_render_pipeline_set_1_binding);
     vk::PipelineLayout primary_render_pipeline_layout = create_pipeline_layout(
-        dev, (uint32_t) sizeof(primary_render_pipeline_push_constants),
-        vk::ShaderStageFlagBits::eVertex,
-        {primary_render_pipeline_set_0_layout});
+        dev,
+        {(uint32_t) sizeof(primary_render_pipeline_vertex_push_constant),
+            (uint32_t) sizeof(primary_render_pipeline_fragment_push_constant)},
+        {vk::ShaderStageFlagBits::eVertex, vk::ShaderStageFlagBits::eFragment},
+        {primary_render_pipeline_set_0_layout,
+            primary_render_pipeline_set_1_layout});
     std::vector<vk::DescriptorSet> primary_render_pipeline_set_0s =
         create_descriptor_set(dev, default_descriptor_pool,
             primary_render_pipeline_set_0_layout, FRAME_IN_FLIGHT);
+    std::vector<vk::DescriptorSet> primary_render_pipeline_set_1s =
+        create_descriptor_set(dev, default_descriptor_pool,
+            primary_render_pipeline_set_1_layout, FRAME_IN_FLIGHT);
     /////////////////////////////////////
     ///* Initialization: Descriptors *///
     /////////////////////////////////////
@@ -204,7 +259,8 @@ void cook_torrance_brdf_renderer() {
     vk::Pipeline primary_render_pipeline = create_graphics_pipeline(dev,
         PATH_FROM_BINARY("shaders/cook_torrance.vert.spv"),
         PATH_FROM_BINARY("shaders/cook_torrance.frag.spv"),
-        primary_render_pipeline_layout, render_pass, vk::PolygonMode::eLine);
+        primary_render_pipeline_layout, render_pass,
+        {(uint32_t) point_lights.size()}, vk::PolygonMode::eFill);
     //////////////////////////////////
     ///* Initialization: Pipeline *///
     //////////////////////////////////
@@ -239,6 +295,7 @@ void cook_torrance_brdf_renderer() {
     std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_vertex_buffers{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_face_buffers{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_material_buffers{};
+    std::array<vma_buffer, FRAME_IN_FLIGHT> point_light_buffers{};
     {
         ++frame_counter;
         vk::Fence const fence = primary_render_fences[0];
@@ -261,9 +318,12 @@ void cook_torrance_brdf_renderer() {
                 {}, vk::BufferUsageFlagBits::eStorageBuffer);
             triangle_material_buffers[frame_idx] =
                 create_gpu_only_buffer(vma_alloc,
-                    (uint32_t) (triangle_mesh.materials.size() *
-                                sizeof(glsl_material)),
+                    (uint32_t) (triangle_mesh.cook_torrance_materials.size() *
+                                sizeof(cook_torrance_material)),
                     {}, vk::BufferUsageFlagBits::eStorageBuffer);
+            point_light_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
+                (uint32_t) (point_lights.size() * sizeof(point_light)), {},
+                vk::BufferUsageFlagBits::eStorageBuffer);
             update_buffer(vma_alloc, command_buffer,
                 triangle_vertex_buffers[frame_idx],
                 to_span(triangle_mesh.vertices), 0);
@@ -272,7 +332,9 @@ void cook_torrance_brdf_renderer() {
                 to_span(triangle_mesh.triangles), 0);
             update_buffer(vma_alloc, command_buffer,
                 triangle_material_buffers[frame_idx],
-                to_span(triangle_mesh.materials), 0);
+                to_span(triangle_mesh.cook_torrance_materials), 0);
+            update_buffer(vma_alloc, command_buffer,
+                point_light_buffers[frame_idx], to_span(point_lights), 0);
             // primary render set 0
             update_descriptor_storage_buffer_whole(dev,
                 primary_render_pipeline_set_0s[frame_idx], 0, 0,
@@ -280,9 +342,13 @@ void cook_torrance_brdf_renderer() {
             update_descriptor_storage_buffer_whole(dev,
                 primary_render_pipeline_set_0s[frame_idx], 1, 0,
                 triangle_face_buffers[frame_idx]);
+            // primary render set 1
             update_descriptor_storage_buffer_whole(dev,
-                primary_render_pipeline_set_0s[frame_idx], 2, 0,
+                primary_render_pipeline_set_1s[frame_idx], 0, 0,
                 triangle_material_buffers[frame_idx]);
+            update_descriptor_storage_buffer_whole(dev,
+                primary_render_pipeline_set_1s[frame_idx], 1, 0,
+                point_light_buffers[frame_idx]);
         }
         VK_CHECK(result, command_buffer.end());
         vk::SubmitInfo const submit_info{
@@ -334,12 +400,17 @@ void cook_torrance_brdf_renderer() {
         };
         std::array const primary_render_pipeline_sets{
             primary_render_pipeline_set_0s[frame_sync_idx],
+            primary_render_pipeline_set_1s[frame_sync_idx],
         };
-        primary_render_pipeline_push_constants const
-            primary_render_pipeline_push_constants{
+        primary_render_pipeline_vertex_push_constant const
+            primary_render_pipeline_ps_vertex{
                 .proj_view =
                     get_glsl_render_camera(camera, win_width, win_height),
             };
+        primary_render_pipeline_fragment_push_constant const
+            primary_render_pipeline_ps_fragment{
+                .camera_position = glm::vec4{camera.position, 1.0f},
+        };
 
         /////////////////////////////
         ///* Primary Render Loop *///
@@ -364,7 +435,7 @@ void cook_torrance_brdf_renderer() {
             .extent = swapchain_extent,
         };
         vk::ClearValue const color_clear_val{
-            .color = {std::array{0.5f, 0.5f, 0.5f, 1.0f}},
+            .color = {std::array{0.0f, 0.0f, 0.0f, 1.0f}},
         };
         vk::RenderPassBeginInfo const render_pass_begin_info{
             .renderPass = render_pass,
@@ -394,8 +465,13 @@ void cook_torrance_brdf_renderer() {
             primary_render_pipeline_sets.data(), 0, nullptr);
         graphics_command_buffer.pushConstants(primary_render_pipeline_layout,
             vk::ShaderStageFlagBits::eVertex, 0,
-            sizeof(primary_render_pipeline_push_constants),
-            &primary_render_pipeline_push_constants);
+            (uint32_t) sizeof(primary_render_pipeline_ps_vertex),
+            &primary_render_pipeline_ps_vertex);
+        graphics_command_buffer.pushConstants(primary_render_pipeline_layout,
+            vk::ShaderStageFlagBits::eFragment,
+            (uint32_t) sizeof(primary_render_pipeline_ps_vertex),
+            (uint32_t) sizeof(primary_render_pipeline_ps_fragment),
+            &primary_render_pipeline_ps_fragment);
         graphics_command_buffer.draw(
             3 * (uint32_t) triangle_mesh.triangles.size(), 1, 0, 0);
         graphics_command_buffer.endRenderPass();
@@ -453,6 +529,7 @@ void cook_torrance_brdf_renderer() {
         destroy_buffer(vma_alloc, triangle_vertex_buffers[i]);
         destroy_buffer(vma_alloc, triangle_face_buffers[i]);
         destroy_buffer(vma_alloc, triangle_material_buffers[i]);
+        destroy_buffer(vma_alloc, point_light_buffers[i]);
     }
     dev.destroyDescriptorPool(default_descriptor_pool);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
@@ -461,6 +538,7 @@ void cook_torrance_brdf_renderer() {
         dev.destroySemaphore(present_semaphores[i]);
     }
     dev.destroyDescriptorSetLayout(primary_render_pipeline_set_0_layout);
+    dev.destroyDescriptorSetLayout(primary_render_pipeline_set_1_layout);
     dev.destroyPipelineLayout(primary_render_pipeline_layout);
     dev.destroyPipeline(primary_render_pipeline);
     dev.destroyCommandPool(graphics_command_pool);

@@ -6,11 +6,16 @@
 vk::Pipeline create_graphics_pipeline(vk::Device device,
     std::string_view vert_path, std::string_view frag_path,
     vk::PipelineLayout layout, vk::RenderPass render_pass,
+    std::vector<uint32_t> const& frag_specialization_constants,
     vk::PolygonMode polygon_mode) {
     vk::Result result;
     vk::Pipeline pipeline;
     vk::ShaderModule vert_module = create_shader_module(device, vert_path);
     vk::ShaderModule frag_module = create_shader_module(device, frag_path);
+    std::vector<vk::SpecializationMapEntry> frag_specialization_entries{};
+    vk::SpecializationInfo const frag_specialization_info =
+        create_specialization_info(
+            frag_specialization_constants, frag_specialization_entries);
     vk::PipelineShaderStageCreateInfo const vert_stage_info{
         .stage = vk::ShaderStageFlagBits::eVertex,
         .module = vert_module,
@@ -20,6 +25,7 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
         .stage = vk::ShaderStageFlagBits::eFragment,
         .module = frag_module,
         .pName = "main",
+        .pSpecializationInfo = &frag_specialization_info,
     };
     std::array const shader_stages{
         vert_stage_info,
@@ -63,7 +69,7 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
         .depthClampEnable = vk::False,
         .rasterizerDiscardEnable = vk::False,
         .polygonMode = polygon_mode,
-        .cullMode = vk::CullModeFlagBits::eNone,
+        .cullMode = vk::CullModeFlagBits::eBack,
         .frontFace = vk::FrontFace::eCounterClockwise,
         .depthBiasEnable = vk::False,
         .lineWidth = 1.0f,

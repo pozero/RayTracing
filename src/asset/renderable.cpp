@@ -100,36 +100,30 @@ void add_quad(triangle_mesh& mesh, glm::vec3 const& upper_left,
     mesh.materials.push_back(material);
 }
 
-void triangulate_sphere(
-    triangle_mesh& mesh, glsl_sphere const& sphere, uint32_t segment_1d) {
+void triangulate_sphere(triangle_mesh& mesh, glsl_sphere const& sphere,
+    cook_torrance_material const& material, uint32_t segment_1d) {
     uint32_t const vertex_count_before = (uint32_t) mesh.vertices.size();
-    uint32_t const material_count_before = (uint32_t) mesh.materials.size();
-    float const sectorStep = 2 * glm::pi<float>() / (float) segment_1d;
+    uint32_t const material_count_before =
+        (uint32_t) mesh.cook_torrance_materials.size();
     float const stackStep = glm::pi<float>() / (float) segment_1d;
+    float const sectorStep = 2 * glm::pi<float>() / (float) segment_1d;
     for (uint32_t i = 0; i <= segment_1d; ++i) {
-        float const stackAngle =
+        float const stack_angle =
             glm::pi<float>() / 2 -
-            (float) i * stackStep;              // starting from pi/2 to -pi/2
-        float const xy = std::cos(stackAngle);  // r * cos(u)
-        float const nz = std::sin(stackAngle);
-        float const z = nz * sphere.radius;  // r * sin(u)
-        // add (sectorCount+1) vertices per stack
-        // first and last vertices have same position and normal, but different
-        // tex coords
+            (float) i * stackStep;  // starting from pi/2 to -pi/2
+        float const cos_u = std::cos(stack_angle);
+        float const sin_u = std::sin(stack_angle);
         for (uint32_t j = 0; j <= segment_1d; ++j) {
-            float const sectorAngle =
-                (float) j * sectorStep;  // starting from 0 to 2pi
-            float const x = sphere.radius * xy *
-                            std::cos(sectorAngle);  // r * cos(u) * cos(v)
-            float const y = sphere.radius * xy *
-                            std::sin(sectorAngle);  // r * cos(u) * sin(v)
-            float const nx = x;
-            float const ny = y;
+            float const sector_angle = (float) j * sectorStep;
+            float const cos_v = std::cos(sector_angle);
+            float const sin_v = std::sin(sector_angle);
+            glm::vec3 const normal{cos_u * cos_v, sin_u, cos_u * sin_v};
             float const s = (float) j / (float) segment_1d;
             float const t = (float) i / (float) segment_1d;
             mesh.vertices.push_back(glsl_triangle_vertex{
-                .position = glm::vec4{glm::vec3{x, y, z} + sphere.radius, 1.0f},
-                .normal = glm::vec4{nx, ny, nz, 0.0f},
+                .position =
+                    glm::vec4{normal * sphere.radius + sphere.center, 1.0f},
+                .normal = glm::vec4{normal, 0.0f},
                 .tangent = {},
                 .albedo_uv = glm::vec2{s, t},
                 .normal_uv = {},
@@ -167,5 +161,5 @@ void triangulate_sphere(
             }
         }
     }
-    mesh.materials.push_back(sphere.material);
+    mesh.cook_torrance_materials.push_back(material);
 }

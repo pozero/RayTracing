@@ -214,8 +214,8 @@ void brute_force_raytracer() {
             raytracing_pipeline_set_1_binding,
             vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool);
     vk::PipelineLayout raytracing_pipeline_layout = create_pipeline_layout(dev,
-        (uint32_t) sizeof(raytracing_pipeline_push_constants),
-        vk::ShaderStageFlagBits::eCompute,
+        {(uint32_t) sizeof(raytracing_pipeline_push_constants)},
+        {vk::ShaderStageFlagBits::eCompute},
         {raytracing_pipeline_set_0_layout, raytracing_pipeline_set_1_layout});
     std::vector<vk::DescriptorSet> raytracing_pipeline_set_0s =
         create_descriptor_set(dev, default_descriptor_pool,
@@ -234,7 +234,7 @@ void brute_force_raytracer() {
     vk::Pipeline graphics_pipeline =
         create_graphics_pipeline(dev, PATH_FROM_BINARY("shaders/rect.vert.spv"),
             PATH_FROM_BINARY("shaders/rect.frag.spv"), graphics_pipeline_layout,
-            render_pass, vk::PolygonMode::eFill);
+            render_pass, {}, vk::PolygonMode::eFill);
     vk::Pipeline raytracing_pipeline = create_compute_pipeline(dev,
         PATH_FROM_BINARY("shaders/raytracer.comp.spv"),
         raytracing_pipeline_layout,

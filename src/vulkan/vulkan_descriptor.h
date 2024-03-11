@@ -17,7 +17,8 @@ vk::PipelineLayout create_pipeline_layout(vk::Device device,
     std::vector<vk::DescriptorSetLayout> const& descriptor_set_layouts);
 
 vk::PipelineLayout create_pipeline_layout(vk::Device device,
-    uint32_t push_constant_size, vk::ShaderStageFlagBits push_constant_stage,
+    std::vector<uint32_t> const& push_constant_size,
+    std::vector<vk::ShaderStageFlagBits> const& push_constant_stage,
     std::vector<vk::DescriptorSetLayout> const& descriptor_set_layouts);
 
 vk::DescriptorPool create_descriptor_pool(

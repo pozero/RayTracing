@@ -13,7 +13,7 @@
 #include "glm/gtc/matrix_transform.hpp"
 #pragma clang diagnostic pop
 
-enum class material_type : int {
+enum class material_type : int32_t {
     lambertian,
     metal,
     dielectric,
@@ -26,6 +26,15 @@ struct glsl_material {
     float refraction_index;
     int32_t albedo_texture;
     material_type type;
+};
+
+struct cook_torrance_material {
+    glm::vec4 albedo;
+    float metallic;
+    float roughness;
+    float ao;
+
+    float padding = 0.0f;
 };
 
 glsl_material create_lambertian(glm::vec3 const& albedo);
@@ -63,6 +72,7 @@ struct triangle_mesh {
     std::vector<glsl_triangle_vertex> vertices;
     std::vector<glsl_triangle> triangles;
     std::vector<glsl_material> materials;
+    std::vector<cook_torrance_material> cook_torrance_materials;
 };
 
 void add_quad(triangle_mesh& mesh, glm::vec3 const& upper_left,
@@ -73,5 +83,10 @@ struct glsl_sky_color {
     glm::vec3 sky_color_bottom;
 };
 
-void triangulate_sphere(
-    triangle_mesh& mesh, glsl_sphere const& sphere, uint32_t segment_1d);
+void triangulate_sphere(triangle_mesh& mesh, glsl_sphere const& sphere,
+    cook_torrance_material const& material, uint32_t segment_1d);
+
+struct point_light {
+    glm::vec4 position;
+    glm::vec4 color;
+};

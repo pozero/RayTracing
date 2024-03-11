@@ -47,20 +47,27 @@ vk::PipelineLayout create_pipeline_layout(vk::Device device,
 }
 
 vk::PipelineLayout create_pipeline_layout(vk::Device device,
-    uint32_t push_constant_size, vk::ShaderStageFlagBits push_constant_stage,
+    std::vector<uint32_t> const& push_constant_sizes,
+    std::vector<vk::ShaderStageFlagBits> const& push_constant_stages,
     std::vector<vk::DescriptorSetLayout> const& descriptor_set_layouts) {
+    CHECK(push_constant_sizes.size() == push_constant_stages.size(), "");
     vk::Result result;
     vk::PipelineLayout pipeline_layout;
-    vk::PushConstantRange const push_constant_range{
-        .stageFlags = push_constant_stage,
-        .offset = 0,
-        .size = push_constant_size,
-    };
+    std::vector<vk::PushConstantRange> push_constant_ranges{};
+    uint32_t current_offset = 0;
+    for (uint32_t i = 0; i < push_constant_sizes.size(); ++i) {
+        push_constant_ranges.push_back(vk::PushConstantRange{
+            .stageFlags = push_constant_stages[i],
+            .offset = current_offset,
+            .size = push_constant_sizes[i],
+        });
+        current_offset += push_constant_sizes[i];
+    }
     vk::PipelineLayoutCreateInfo const pipeline_layout_info{
         .setLayoutCount = (uint32_t) descriptor_set_layouts.size(),
         .pSetLayouts = descriptor_set_layouts.data(),
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_constant_range,
+        .pushConstantRangeCount = (uint32_t) push_constant_ranges.size(),
+        .pPushConstantRanges = push_constant_ranges.data(),
     };
     VK_CHECK_CREATE(result, pipeline_layout,
         device.createPipelineLayout(pipeline_layout_info));
