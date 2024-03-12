@@ -5,7 +5,7 @@
 #define COOK_TORRANCE_BRDF_RENDERER 1
 
 int main() {
-    switch (BRUTE_FORCE_RAYTRACER) {
+    switch (COOK_TORRANCE_BRDF_RENDERER) {
         case BRUTE_FORCE_RAYTRACER:
             brute_force_raytracer();
             break;

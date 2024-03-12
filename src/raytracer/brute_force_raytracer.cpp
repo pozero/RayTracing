@@ -279,12 +279,12 @@ void brute_force_raytracer() {
     create_dummy_buffer(vma_alloc);
     vk::Sampler default_sampler = create_default_sampler(dev);
     std::array<vma_image, FRAME_IN_FLIGHT> accumulation_images{};
-    std::array<std::vector<vma_image>, FRAME_IN_FLIGHT> textures{};
+    std::vector<vma_image> textures{};
     std::array<vma_buffer, FRAME_IN_FLIGHT> camera_buffers{};
-    std::array<vma_buffer, FRAME_IN_FLIGHT> sphere_buffers{};
-    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_vertex_buffers{};
-    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_face_buffers{};
-    std::array<vma_buffer, FRAME_IN_FLIGHT> triangle_material_buffers{};
+    vma_buffer sphere_buffer{};
+    vma_buffer triangle_vertex_buffer{};
+    vma_buffer triangle_face_buffer{};
+    vma_buffer triangle_material_buffer{};
     {
         ++frame_counter;
         vk::Fence const fence = render_fences[0];
@@ -295,6 +295,41 @@ void brute_force_raytracer() {
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
         };
         VK_CHECK(result, command_buffer.begin(begin_info));
+        sphere_buffer = create_gpu_only_buffer(vma_alloc, size_in_byte(spheres),
+            {}, vk::BufferUsageFlagBits::eUniformBuffer);
+        triangle_vertex_buffer = create_gpu_only_buffer(vma_alloc,
+            size_in_byte(triangle_mesh.vertices), {},
+            vk::BufferUsageFlagBits::eUniformBuffer);
+        triangle_face_buffer = create_gpu_only_buffer(vma_alloc,
+            size_in_byte(triangle_mesh.triangles), {},
+            vk::BufferUsageFlagBits::eUniformBuffer);
+        triangle_material_buffer = create_gpu_only_buffer(vma_alloc,
+            size_in_byte(triangle_mesh.materials), {},
+            vk::BufferUsageFlagBits::eUniformBuffer);
+        update_buffer(
+            vma_alloc, command_buffer, sphere_buffer, to_span(spheres), 0);
+        update_buffer(vma_alloc, command_buffer, triangle_vertex_buffer,
+            to_span(triangle_mesh.vertices), 0);
+        update_buffer(vma_alloc, command_buffer, triangle_face_buffer,
+            to_span(triangle_mesh.triangles), 0);
+        update_buffer(vma_alloc, command_buffer, triangle_material_buffer,
+            to_span(triangle_mesh.materials), 0);
+        // textures
+        textures.reserve(texture_datas.size());
+        for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
+             ++texture_idx) {
+            vk::Format const format =
+                texture_datas[texture_idx].format == texture_format::unorm ?
+                    vk::Format::eR8G8B8A8Unorm :
+                    vk::Format::eR32G32B32A32Sfloat;
+            textures.push_back(create_texture2d_simple(dev, vma_alloc,
+                command_buffer, texture_datas[texture_idx].width,
+                texture_datas[texture_idx].height, format, {},
+                vk::ImageUsageFlagBits::eSampled |
+                    vk::ImageUsageFlagBits::eTransferDst));
+            update_texture2d_simple(vma_alloc, textures[texture_idx],
+                command_buffer, texture_datas[texture_idx]);
+        }
         for (uint32_t frame_idx = 0; frame_idx < FRAME_IN_FLIGHT; ++frame_idx) {
             accumulation_images[frame_idx] =
                 create_texture2d_simple(dev, vma_alloc, command_buffer,
@@ -309,48 +344,6 @@ void brute_force_raytracer() {
             camera_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
                 (uint32_t) sizeof(glsl_raytracer_camera), {},
                 vk::BufferUsageFlagBits::eUniformBuffer);
-            sphere_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
-                (uint32_t) (spheres.size() * sizeof(glsl_sphere)), {},
-                vk::BufferUsageFlagBits::eUniformBuffer);
-            triangle_vertex_buffers[frame_idx] =
-                create_gpu_only_buffer(vma_alloc,
-                    (uint32_t) (triangle_mesh.vertices.size() *
-                                sizeof(glsl_triangle_vertex)),
-                    {}, vk::BufferUsageFlagBits::eUniformBuffer);
-            triangle_face_buffers[frame_idx] = create_gpu_only_buffer(vma_alloc,
-                (uint32_t) (triangle_mesh.triangles.size() *
-                            sizeof(glsl_triangle)),
-                {}, vk::BufferUsageFlagBits::eUniformBuffer);
-            triangle_material_buffers[frame_idx] =
-                create_gpu_only_buffer(vma_alloc,
-                    (uint32_t) (triangle_mesh.materials.size() *
-                                sizeof(glsl_material)),
-                    {}, vk::BufferUsageFlagBits::eUniformBuffer);
-            update_buffer(vma_alloc, command_buffer, sphere_buffers[frame_idx],
-                to_span(spheres), 0);
-            update_buffer(vma_alloc, command_buffer,
-                triangle_vertex_buffers[frame_idx],
-                to_span(triangle_mesh.vertices), 0);
-            update_buffer(vma_alloc, command_buffer,
-                triangle_face_buffers[frame_idx],
-                to_span(triangle_mesh.triangles), 0);
-            update_buffer(vma_alloc, command_buffer,
-                triangle_material_buffers[frame_idx],
-                to_span(triangle_mesh.materials), 0);
-            // textures
-            textures[frame_idx].reserve(texture_datas.size());
-            for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
-                 ++texture_idx) {
-                textures[frame_idx].push_back(create_texture2d_simple(dev,
-                    vma_alloc, command_buffer, texture_datas[texture_idx].width,
-                    texture_datas[texture_idx].height,
-                    vk::Format::eR8G8B8A8Unorm, {},
-                    vk::ImageUsageFlagBits::eSampled |
-                        vk::ImageUsageFlagBits::eTransferDst));
-                update_texture2d_simple(vma_alloc,
-                    textures[frame_idx][texture_idx], command_buffer,
-                    texture_datas[texture_idx]);
-            }
             // graphics pipeline set 0
             update_descriptor_uniform_buffer_whole(dev,
                 graphics_pipeline_set_0s[frame_idx], 1, 0,
@@ -360,24 +353,22 @@ void brute_force_raytracer() {
                 raytracing_pipeline_set_0s[frame_idx], 1, 0,
                 camera_buffers[frame_idx]);
             update_descriptor_uniform_buffer_whole(dev,
-                raytracing_pipeline_set_0s[frame_idx], 2, 0,
-                sphere_buffers[frame_idx]);
+                raytracing_pipeline_set_0s[frame_idx], 2, 0, sphere_buffer);
             update_descriptor_uniform_buffer_whole(dev,
                 raytracing_pipeline_set_0s[frame_idx], 3, 0,
-                triangle_vertex_buffers[frame_idx]);
+                triangle_vertex_buffer);
             update_descriptor_uniform_buffer_whole(dev,
                 raytracing_pipeline_set_0s[frame_idx], 4, 0,
-                triangle_face_buffers[frame_idx]);
+                triangle_face_buffer);
             update_descriptor_uniform_buffer_whole(dev,
                 raytracing_pipeline_set_0s[frame_idx], 5, 0,
-                triangle_material_buffers[frame_idx]);
+                triangle_material_buffer);
             // raytracing pipeline set 1
             for (uint32_t texture_idx = 0; texture_idx < texture_datas.size();
                  ++texture_idx) {
                 update_descriptor_image_sampler_combined(dev,
                     raytracing_pipeline_set_1s[frame_idx], 0, texture_idx,
-                    default_sampler,
-                    textures[frame_idx][texture_idx].primary_view);
+                    default_sampler, textures[texture_idx].primary_view);
             }
         }
         VK_CHECK(result, command_buffer.end());
@@ -645,18 +636,21 @@ void brute_force_raytracer() {
     /////////////////
     ///* Cleanup *///
     /////////////////
+    for (auto& texture_data : texture_datas) {
+        std::free(texture_data.data);
+    }
     glfwTerminate();
     VK_CHECK(result, dev.waitIdle());
+    destroy_buffer(vma_alloc, sphere_buffer);
+    destroy_buffer(vma_alloc, triangle_vertex_buffer);
+    destroy_buffer(vma_alloc, triangle_face_buffer);
+    destroy_buffer(vma_alloc, triangle_material_buffer);
+    for (auto const& t : textures) {
+        destroy_image(dev, vma_alloc, t);
+    }
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         destroy_image(dev, vma_alloc, accumulation_images[i]);
         destroy_buffer(vma_alloc, camera_buffers[i]);
-        destroy_buffer(vma_alloc, sphere_buffers[i]);
-        destroy_buffer(vma_alloc, triangle_vertex_buffers[i]);
-        destroy_buffer(vma_alloc, triangle_face_buffers[i]);
-        destroy_buffer(vma_alloc, triangle_material_buffers[i]);
-        for (auto const& t : textures[i]) {
-            destroy_image(dev, vma_alloc, t);
-        }
     }
     cleanup_staging_buffer(vma_alloc);
     cleanup_staging_image(vma_alloc);

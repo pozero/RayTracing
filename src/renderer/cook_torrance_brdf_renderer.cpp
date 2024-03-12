@@ -333,19 +333,17 @@ void cook_torrance_brdf_renderer() {
         };
         VK_CHECK(result, command_buffer.begin(begin_info));
         triangle_vertex_buffer = create_gpu_only_buffer(vma_alloc,
-            (uint32_t) (triangle_mesh.vertices.size() *
-                        sizeof(glsl_triangle_vertex)),
-            {}, vk::BufferUsageFlagBits::eStorageBuffer);
-        triangle_face_buffer = create_gpu_only_buffer(vma_alloc,
-            (uint32_t) (triangle_mesh.triangles.size() * sizeof(glsl_triangle)),
-            {}, vk::BufferUsageFlagBits::eStorageBuffer);
-        triangle_material_buffer = create_gpu_only_buffer(vma_alloc,
-            (uint32_t) (triangle_mesh.cook_torrance_materials.size() *
-                        sizeof(cook_torrance_material)),
-            {}, vk::BufferUsageFlagBits::eStorageBuffer);
-        point_light_buffer = create_gpu_only_buffer(vma_alloc,
-            (uint32_t) (point_lights.size() * sizeof(point_light)), {},
+            size_in_byte(triangle_mesh.vertices), {},
             vk::BufferUsageFlagBits::eStorageBuffer);
+        triangle_face_buffer = create_gpu_only_buffer(vma_alloc,
+            size_in_byte(triangle_mesh.triangles), {},
+            vk::BufferUsageFlagBits::eStorageBuffer);
+        triangle_material_buffer = create_gpu_only_buffer(vma_alloc,
+            size_in_byte(triangle_mesh.cook_torrance_materials), {},
+            vk::BufferUsageFlagBits::eStorageBuffer);
+        point_light_buffer =
+            create_gpu_only_buffer(vma_alloc, size_in_byte(point_lights), {},
+                vk::BufferUsageFlagBits::eStorageBuffer);
         update_buffer(vma_alloc, command_buffer, triangle_vertex_buffer,
             to_span(triangle_mesh.vertices), 0);
         update_buffer(vma_alloc, command_buffer, triangle_face_buffer,

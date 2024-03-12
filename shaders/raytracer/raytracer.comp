@@ -85,7 +85,7 @@ layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(rgba32f, set = 0, binding = 0) uniform image2D img_output;
 
-layout(std430, set = 0, binding = 1) uniform camera {
+layout(std430, set = 0, binding = 1) readonly uniform camera {
     vec3 pixel_delta_u;
     vec3 pixel_delta_v;
     vec3 upper_left_pixel;
@@ -93,20 +93,20 @@ layout(std430, set = 0, binding = 1) uniform camera {
     float accumulated_scalar;
 };
 
-layout(std430, set = 0, binding = 2) uniform sphere_geometries {
+layout(std430, set = 0, binding = 2) readonly uniform sphere_geometries {
 // + 1 to prevent empty buffer error when no sphere presents
     sphere_t spheres[SPHERE_COUNT + 1];
 };
 
-layout(std430, set = 0, binding = 3) uniform triangle_geometries_vertex {
+layout(std430, set = 0, binding = 3) readonly uniform triangle_geometries_vertex {
     triangel_vertex_t triangle_vertices[TRIANGLE_VERTEX_COUNT + 1];
 };
 
-layout(std430, set = 0, binding = 4) uniform triangle_geometries_face {
+layout(std430, set = 0, binding = 4) readonly uniform triangle_geometries_face {
     triangle_t triangles[TRIANGLE_COUNT + 1];
 };
 
-layout(std430, set = 0, binding = 5) uniform triangle_geometries_materials {
+layout(std430, set = 0, binding = 5) readonly uniform triangle_geometries_materials {
     material_t triangle_materials[TRIANGLE_MATERIAL_COUNT + 1];
 };
 

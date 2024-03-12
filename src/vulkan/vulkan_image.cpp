@@ -104,6 +104,56 @@ vma_image create_texture2d_simple(vk::Device device, VmaAllocator vma_alloc,
     return image;
 }
 
+vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
+    vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
+    vk::Format format, std::vector<uint32_t> const& queues) {
+    vk::Result result;
+    vk::ImageView view;
+    vma_image image = create_image(vma_alloc, width, height, format, queues, {},
+        vk::ImageType::e2D,
+        vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
+        1, 6, vk::ImageTiling::eOptimal, vk::ImageLayout::eUndefined,
+        VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+    vk::ImageMemoryBarrier const image_barrier{
+        .srcAccessMask = vk::AccessFlagBits::eNone,
+        .dstAccessMask = vk::AccessFlagBits::eNone,
+        .oldLayout = vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eGeneral,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .image = image.image,
+        .subresourceRange =
+            vk::ImageSubresourceRange{
+                                      .aspectMask = vk::ImageAspectFlagBits::eColor,
+                                      .baseMipLevel = 0,
+                                      .levelCount = 1,
+                                      .baseArrayLayer = 0,
+                                      .layerCount = 6},
+    };
+    command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eNone,
+        vk::PipelineStageFlagBits::eNone, vk::DependencyFlags{}, 0, nullptr, 0,
+        nullptr, 1, &image_barrier);
+    vk::ImageViewCreateInfo const view_info{
+        .image = image.image,
+        .viewType = vk::ImageViewType::eCube,
+        .format = format,
+        .components = vk::ComponentMapping{.r = vk::ComponentSwizzle::eIdentity,
+                                           .g = vk::ComponentSwizzle::eIdentity,
+                                           .b = vk::ComponentSwizzle::eIdentity,
+                                           .a = vk::ComponentSwizzle::eIdentity},
+        .subresourceRange =
+            vk::ImageSubresourceRange{
+                                           .aspectMask = vk::ImageAspectFlagBits::eColor,
+                                           .baseMipLevel = 0,
+                                           .levelCount = 1,
+                                           .baseArrayLayer = 0,
+                                           .layerCount = 6},
+    };
+    VK_CHECK_CREATE(result, view, device.createImageView(view_info));
+    image.primary_view = view;
+    return image;
+}
+
 vma_image create_host_image(VmaAllocator vma_alloc,
     vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
     vk::Format format) {
@@ -159,21 +209,40 @@ vma_image create_host_image(VmaAllocator vma_alloc,
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 void update_host_image(VmaAllocator vma_alloc, vma_image const& image,
     texture_data const& texture_data) {
-    if (texture_data.channel == texture_channel::rgb) {
-        uint8_t const* src = texture_data.data.get();
-        uint8_t* dst = image.mapped;
-        for (uint32_t pixel = 0;
-             pixel < texture_data.width * texture_data.height; ++pixel) {
-            dst[4 * pixel + 0] = src[3 * pixel + 0];
-            dst[4 * pixel + 1] = src[3 * pixel + 1];
-            dst[4 * pixel + 2] = src[3 * pixel + 2];
-            dst[4 * pixel + 3] = 255;
+    if (image.format == vk::Format::eR8G8B8A8Unorm) {
+        uint8_t const* src =
+            reinterpret_cast<uint8_t const*>(texture_data.data);
+        uint8_t* dst = reinterpret_cast<uint8_t*>(image.mapped);
+        if (texture_data.channel == texture_channel::rgb) {
+            for (uint32_t pixel = 0;
+                 pixel < texture_data.width * texture_data.height; ++pixel) {
+                dst[4 * pixel + 0] = src[3 * pixel + 0];
+                dst[4 * pixel + 1] = src[3 * pixel + 1];
+                dst[4 * pixel + 2] = src[3 * pixel + 2];
+                dst[4 * pixel + 3] = 255;
+            }
+        } else if (texture_data.channel == texture_channel::rgba) {
+            std::copy(src, &src[texture_data.width * texture_data.height * 4],
+                reinterpret_cast<uint8_t*>(image.mapped));
         }
-    } else if (texture_data.channel == texture_channel::rgba) {
-        std::copy(texture_data.data.get(),
-            &texture_data.data
-                 .get()[texture_data.width * texture_data.height * 4],
-            image.mapped);
+    } else if (image.format == vk::Format::eR32G32B32A32Sfloat) {
+        float const* src = reinterpret_cast<float const*>(texture_data.data);
+        float* dst = reinterpret_cast<float*>(image.mapped);
+        if (texture_data.channel == texture_channel::rgb) {
+            for (uint32_t pixel = 0;
+                 pixel < texture_data.width * texture_data.height; ++pixel) {
+                dst[4 * pixel + 0] = src[3 * pixel + 0];
+                dst[4 * pixel + 1] = src[3 * pixel + 1];
+                dst[4 * pixel + 2] = src[3 * pixel + 2];
+                dst[4 * pixel + 3] = 255;
+            }
+        } else if (texture_data.channel == texture_channel::rgba) {
+            std::copy(src, &src[texture_data.width * texture_data.height * 4],
+                reinterpret_cast<uint8_t*>(image.mapped));
+        }
+    } else {
+        CHECK(false, "Unsupported host image format: {}",
+            vk::to_string(image.format));
     }
     vmaFlushAllocation(vma_alloc, image.allocation, 0, VK_WHOLE_SIZE);
 }
@@ -181,50 +250,20 @@ void update_host_image(VmaAllocator vma_alloc, vma_image const& image,
 void update_texture2d_simple(VmaAllocator vma_alloc, vma_image const& image,
     vk::CommandBuffer command_buffer, texture_data const& texture_data) {
     vma_image staging;
-    vk::ImageSubresourceRange const whole_range{
-        .aspectMask = vk::ImageAspectFlagBits::eColor,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1,
-    };
     vk::ImageSubresourceLayers const whole_layer{
         .aspectMask = vk::ImageAspectFlagBits::eColor,
         .mipLevel = 0,
         .baseArrayLayer = 0,
         .layerCount = 1,
     };
-    uint32_t fitted_index = (uint32_t) staging_images.size();
-    for (uint32_t i = 0; i < staging_images.size(); ++i) {
-        if (staging_images[i].width == texture_data.width &&
-            staging_images[i].height == texture_data.height) {
-            fitted_index = i;
-            break;
-        }
-    }
-    if (fitted_index == staging_images.size()) {
-        staging =
-            create_host_image(vma_alloc, command_buffer, texture_data.width,
-                texture_data.height, vk::Format::eR8G8B8A8Unorm);
-        staging_images.push_back(staging);
-    } else {
-        staging = staging_images[fitted_index];
-        vk::ImageMemoryBarrier const barrier{
-            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-            .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
-            .oldLayout = vk::ImageLayout::eGeneral,
-            .newLayout = vk::ImageLayout::eGeneral,
-            .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-            .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-            .image = staging.image,
-            .subresourceRange = whole_range,
-        };
-        command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-            vk::PipelineStageFlagBits::eTransfer, {}, 0, nullptr, 0, nullptr, 1,
-            &barrier);
-    }
+    vk::Format const host_format =
+        texture_data.format == texture_format::unorm ?
+            vk::Format::eR8G8B8A8Unorm :
+            vk::Format::eR32G32B32A32Sfloat;
+    staging = create_host_image(vma_alloc, command_buffer, texture_data.width,
+        texture_data.height, host_format);
+    staging_images.push_back(staging);
     update_host_image(vma_alloc, staging, texture_data);
-
     bool const need_reformat = image.format != staging.format;
     bool const need_resize = image.width != texture_data.width ||
                              image.height != texture_data.height;
@@ -232,11 +271,11 @@ void update_texture2d_simple(VmaAllocator vma_alloc, vma_image const& image,
         std::array const src_offsets{
             vk::Offset3D{  0,                             0, 0                         },
             vk::Offset3D{
-                         (int32_t) texture_data.width, (int32_t) texture_data.height, 0},
+                         (int32_t) texture_data.width, (int32_t) texture_data.height, 1},
         };
         std::array const dst_offsets{
             vk::Offset3D{                    0,                      0, 0},
-            vk::Offset3D{(int32_t) image.width, (int32_t) image.height, 0},
+            vk::Offset3D{(int32_t) image.width, (int32_t) image.height, 1},
         };
         vk::ImageBlit const blit_info{
             .srcSubresource = whole_layer,
