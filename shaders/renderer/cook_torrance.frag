@@ -44,6 +44,11 @@ vec3 fresnel_schlick(const in vec3 half_vec,
                      const in vec3 view,
                      const in vec3 f0);
 
+vec3 fresnel_schlick_roughness(const in vec3 normal,
+                               const in vec3 view,
+                               const in vec3 f0, 
+                               const float roughness);
+
 vec3 calculate_f0(const in cook_torrance_material_t material);
 
 layout(push_constant, std430) uniform push_constants {
@@ -57,6 +62,8 @@ layout(std430, set = 1, binding = 0) readonly buffer triangle_materials {
 layout(std430, set = 1, binding = 1) readonly buffer point_lights {
     point_light lights[POINT_LIGHT_COUNT];
 };
+
+layout(set = 1, binding = 2) uniform samplerCube lambertian_diffuse_irradiance_map;
 
 void main() {
     const cook_torrance_material_t material = materials[nonuniformEXT(in_material)];
@@ -85,7 +92,9 @@ void main() {
         const vec3 diffuse = (k_diffuse * material.albedo.xyz) / PI;
         lo += (diffuse + specular) * radiance * n_dot_l;
     }
-    const vec3 ambient = vec3(0.03) * material.albedo.xyz * material.ao;
+    const vec3 k_diffuse_ambient = 1.0 - fresnel_schlick_roughness(normal, view, f0, material.roughness);
+    const vec3 lambertian_diffuse_irradiance = texture(lambertian_diffuse_irradiance_map, normal).rgb;
+    const vec3 ambient = k_diffuse_ambient * lambertian_diffuse_irradiance * material.albedo.xyz * material.ao;
     const vec3 linear_color = ambient + lo;
     const vec3 corrected_color = gamma_correct(tone_mapping(linear_color));
     out_frag = vec4(corrected_color, 1.0);
@@ -133,6 +142,15 @@ vec3 fresnel_schlick(const in vec3 half_vec,
                      const in vec3 f0) {
     const float h_dot_v = clamp(dot(half_vec, view), 0.0, 1.0);
     return f0 + (1.0 - f0) * pow(1.0 - h_dot_v, 5.0);
+}
+
+
+vec3 fresnel_schlick_roughness(const in vec3 normal,
+                               const in vec3 view,
+                               const in vec3 f0, 
+                               const float roughness) {
+    const float n_dot_v = clamp(dot(normal, view), 0.0, 1.0);
+    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(1.0 - n_dot_v, 5.0);
 }
 
 vec3 calculate_f0(const in cook_torrance_material_t material) {

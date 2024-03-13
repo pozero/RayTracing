@@ -16,16 +16,16 @@ layout(push_constant, std430) uniform push_constants {
 };
 
 uint seed = (gl_GlobalInvocationID.x * gl_NumWorkGroups.y + 
-                    gl_GlobalInvocationID.y) * uint(frame_counter);
+                    gl_GlobalInvocationID.x) * uint(frame_counter);
+
+#define RAY_BOUNCE_MAX_COUNT 10
+#define PI 3.1415926535
+#define ONE_OVER_PI (1 / 3.1415926535)
 
 #include "../common/unpack.glsl"
 #include "../common/material.glsl"
 #include "../common/geometry.glsl"
 #include "../common/random.glsl"
-
-#define RAY_BOUNCE_MAX_COUNT 10
-#define PI 3.1415926535
-#define ONE_OVER_PI (1 / 3.1415926535)
 
 struct ray_t {
     vec3 origin;

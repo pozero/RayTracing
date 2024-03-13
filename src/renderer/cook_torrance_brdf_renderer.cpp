@@ -244,18 +244,34 @@ void cook_torrance_brdf_renderer() {
     vk::DescriptorPool default_descriptor_pool = create_descriptor_pool(dev);
     // generate cubemap pipeline
     std::vector<vk_descriptor_set_binding> const
-        generate_cubemap_pipeline_set_0_binding{
+        environment_map_generation_pipeline_set_0_binding{
             {vk::DescriptorType::eCombinedImageSampler, 1},
             {        vk::DescriptorType::eStorageImage, 1},
     };
-    vk::DescriptorSetLayout generate_cubemap_pipeline_set_0_layout =
+    vk::DescriptorSetLayout environment_map_generation_pipeline_set_0_layout =
         create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eCompute,
-            generate_cubemap_pipeline_set_0_binding);
-    vk::PipelineLayout generate_cubemap_pipeline_layout =
-        create_pipeline_layout(dev, {generate_cubemap_pipeline_set_0_layout});
-    std::vector<vk::DescriptorSet> generate_cubemap_pipeline_set_0 =
+            environment_map_generation_pipeline_set_0_binding);
+    vk::PipelineLayout environment_map_generation_pipeline_layout =
+        create_pipeline_layout(
+            dev, {environment_map_generation_pipeline_set_0_layout});
+    std::vector<vk::DescriptorSet> environment_map_generation_pipeline_set_0 =
         create_descriptor_set(dev, default_descriptor_pool,
-            generate_cubemap_pipeline_set_0_layout, 1);
+            environment_map_generation_pipeline_set_0_layout, 1);
+    // lambertian irradiance generation pipeline
+    std::vector<vk_descriptor_set_binding> const
+        lambertian_irradiance_map_pipeline_set_0_binding{
+            {vk::DescriptorType::eCombinedImageSampler, 1},
+            {        vk::DescriptorType::eStorageImage, 1},
+    };
+    vk::DescriptorSetLayout lambertian_irradiance_map_pipeline_set_0_layout =
+        create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eCompute,
+            lambertian_irradiance_map_pipeline_set_0_binding);
+    vk::PipelineLayout lambertian_irradiance_map_pipeline_layout =
+        create_pipeline_layout(
+            dev, {lambertian_irradiance_map_pipeline_set_0_layout});
+    std::vector<vk::DescriptorSet> lambertian_irradiance_map_pipeline_set_0 =
+        create_descriptor_set(dev, default_descriptor_pool,
+            lambertian_irradiance_map_pipeline_set_0_layout, 1);
     // primary render pipeline
     struct primary_render_pipeline_vertex_push_constant {
         glm::mat4 proj_view;
@@ -271,8 +287,9 @@ void cook_torrance_brdf_renderer() {
     };
     std::vector<vk_descriptor_set_binding> const
         primary_render_pipeline_set_1_binding{
-            {vk::DescriptorType::eStorageBuffer, 1},
-            {vk::DescriptorType::eStorageBuffer, 1},
+            {       vk::DescriptorType::eStorageBuffer, 1},
+            {       vk::DescriptorType::eStorageBuffer, 1},
+            {vk::DescriptorType::eCombinedImageSampler, 1},
     };
     vk::DescriptorSetLayout primary_render_pipeline_set_0_layout =
         create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eVertex,
@@ -320,9 +337,13 @@ void cook_torrance_brdf_renderer() {
     //////////////////////////////////
     ///* Initialization: Pipeline *///
     //////////////////////////////////
-    vk::Pipeline generate_cubemap_pipeline = create_compute_pipeline(dev,
-        PATH_FROM_BINARY("shaders/cubemap.comp.spv"),
-        generate_cubemap_pipeline_layout, {});
+    vk::Pipeline environment_map_generation_pipeline = create_compute_pipeline(
+        dev, PATH_FROM_BINARY("shaders/cubemap.comp.spv"),
+        environment_map_generation_pipeline_layout, {});
+    vk::Pipeline lambertian_irradiance_map_pipeline = create_compute_pipeline(
+        dev,
+        PATH_FROM_BINARY("shaders/lambertian_diffuse_irradiance_map.comp.spv"),
+        lambertian_irradiance_map_pipeline_layout, {});
     vk::Pipeline primary_render_pipeline = create_graphics_pipeline(dev,
         PATH_FROM_BINARY("shaders/cook_torrance.vert.spv"),
         PATH_FROM_BINARY("shaders/cook_torrance.frag.spv"),
@@ -369,6 +390,7 @@ void cook_torrance_brdf_renderer() {
     /////////////////////////////////////////
     vma_image background_hdr_image;
     vma_image environment_map;
+    vma_image lambertian_irradiance_map;
     {
         uint32_t const frame_sync_idx = frame_counter % FRAME_IN_FLIGHT;
         vk::Fence const fence = graphics_fences[frame_sync_idx];
@@ -381,29 +403,90 @@ void cook_torrance_brdf_renderer() {
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
         };
         VK_CHECK(result, graphics_command_buffer.begin(begin_info));
-        background_hdr_image = create_texture2d_simple(dev, vma_alloc,
-            graphics_command_buffer, background_hdr.width,
-            background_hdr.height, vk::Format::eR32G32B32A32Sfloat, {},
-            vk::ImageUsageFlagBits::eSampled |
-                vk::ImageUsageFlagBits::eTransferDst);
         // the width and height of cubemap should equal according to the spec
         uint32_t const environment_map_size =
             std::max(background_hdr.width, background_hdr.height);
         environment_map = create_cubemap(dev, vma_alloc,
             graphics_command_buffer, environment_map_size, environment_map_size,
             vk::Format::eR32G32B32A32Sfloat, {});
+        background_hdr_image = create_texture2d_simple(dev, vma_alloc,
+            graphics_command_buffer, background_hdr.width,
+            background_hdr.height, vk::Format::eR32G32B32A32Sfloat, {},
+            vk::ImageUsageFlagBits::eSampled |
+                vk::ImageUsageFlagBits::eTransferDst);
+        lambertian_irradiance_map = create_cubemap(dev, vma_alloc,
+            graphics_command_buffer, environment_map_size, environment_map_size,
+            vk::Format::eR32G32B32A32Sfloat, {});
         update_texture2d_simple(vma_alloc, background_hdr_image,
             graphics_command_buffer, background_hdr);
+        vk::ImageMemoryBarrier const background_hdr_upload_barrier{
+            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+            .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+            .oldLayout = vk::ImageLayout::eGeneral,
+            .newLayout = vk::ImageLayout::eGeneral,
+            .srcQueueFamilyIndex = queues.graphics_queue_idx,
+            .dstQueueFamilyIndex = queues.graphics_queue_idx,
+            .image = background_hdr_image.image,
+            .subresourceRange =
+                vk::ImageSubresourceRange{
+                                          .aspectMask = vk::ImageAspectFlagBits::eColor,
+                                          .baseMipLevel = 0,
+                                          .levelCount = 1,
+                                          .baseArrayLayer = 0,
+                                          .layerCount = 1},
+        };
+        graphics_command_buffer.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 0,
+            nullptr, 1, &background_hdr_upload_barrier);
+        // environment map generation pipeline
         update_descriptor_image_sampler_combined(dev,
-            generate_cubemap_pipeline_set_0[0], 0, 0, default_sampler,
+            environment_map_generation_pipeline_set_0[0], 0, 0, default_sampler,
             background_hdr_image.primary_view);
-        update_descriptor_storage_image(dev, generate_cubemap_pipeline_set_0[0],
-            1, 0, environment_map.primary_view);
-        graphics_command_buffer.bindPipeline(
-            vk::PipelineBindPoint::eCompute, generate_cubemap_pipeline);
+        update_descriptor_storage_image(dev,
+            environment_map_generation_pipeline_set_0[0], 1, 0,
+            environment_map.primary_view);
+        graphics_command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute,
+            environment_map_generation_pipeline);
         graphics_command_buffer.bindDescriptorSets(
-            vk::PipelineBindPoint::eCompute, generate_cubemap_pipeline_layout,
-            0, 1, &generate_cubemap_pipeline_set_0[0], 0, nullptr);
+            vk::PipelineBindPoint::eCompute,
+            environment_map_generation_pipeline_layout, 0, 1,
+            &environment_map_generation_pipeline_set_0[0], 0, nullptr);
+        graphics_command_buffer.dispatch(
+            environment_map_size, environment_map_size, 6);
+        vk::ImageMemoryBarrier const environment_gen_barrier{
+            .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
+            .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+            .oldLayout = vk::ImageLayout::eGeneral,
+            .newLayout = vk::ImageLayout::eGeneral,
+            .srcQueueFamilyIndex = queues.graphics_queue_idx,
+            .dstQueueFamilyIndex = queues.graphics_queue_idx,
+            .image = environment_map.image,
+            .subresourceRange =
+                vk::ImageSubresourceRange{
+                                          .aspectMask = vk::ImageAspectFlagBits::eColor,
+                                          .baseMipLevel = 0,
+                                          .levelCount = 1,
+                                          .baseArrayLayer = 0,
+                                          .layerCount = 1},
+        };
+        graphics_command_buffer.pipelineBarrier(
+            vk::PipelineStageFlagBits::eComputeShader,
+            vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 0,
+            nullptr, 1, &environment_gen_barrier);
+        // lambertian diffuse map generation pipeline
+        update_descriptor_image_sampler_combined(dev,
+            lambertian_irradiance_map_pipeline_set_0[0], 0, 0, default_sampler,
+            environment_map.primary_view);
+        update_descriptor_storage_image(dev,
+            lambertian_irradiance_map_pipeline_set_0[0], 1, 0,
+            lambertian_irradiance_map.primary_view);
+        graphics_command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute,
+            lambertian_irradiance_map_pipeline);
+        graphics_command_buffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eCompute,
+            lambertian_irradiance_map_pipeline_layout, 0, 1,
+            &lambertian_irradiance_map_pipeline_set_0[0], 0, nullptr);
         graphics_command_buffer.dispatch(
             environment_map_size, environment_map_size, 6);
         VK_CHECK(result, graphics_command_buffer.end());
@@ -479,6 +562,9 @@ void cook_torrance_brdf_renderer() {
             update_descriptor_storage_buffer_whole(dev,
                 primary_render_pipeline_set_1s[frame_idx], 1, 0,
                 point_light_buffer);
+            update_descriptor_image_sampler_combined(dev,
+                primary_render_pipeline_set_1s[frame_idx], 2, 0,
+                default_sampler, lambertian_irradiance_map.primary_view);
             // enviroment render set 0
             update_descriptor_image_sampler_combined(dev,
                 environment_render_pipeline_set_0s[frame_idx], 0, 0,
@@ -692,6 +778,7 @@ void cook_torrance_brdf_renderer() {
     destroy_buffer(vma_alloc, point_light_buffer);
     destroy_image(dev, vma_alloc, background_hdr_image);
     destroy_image(dev, vma_alloc, environment_map);
+    destroy_image(dev, vma_alloc, lambertian_irradiance_map);
     dev.destroyDescriptorPool(default_descriptor_pool);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         dev.destroyFence(graphics_fences[i]);
@@ -701,13 +788,18 @@ void cook_torrance_brdf_renderer() {
     dev.destroyDescriptorSetLayout(environment_render_pipeline_set_0_layout);
     dev.destroyDescriptorSetLayout(primary_render_pipeline_set_0_layout);
     dev.destroyDescriptorSetLayout(primary_render_pipeline_set_1_layout);
-    dev.destroyDescriptorSetLayout(generate_cubemap_pipeline_set_0_layout);
+    dev.destroyDescriptorSetLayout(
+        environment_map_generation_pipeline_set_0_layout);
+    dev.destroyDescriptorSetLayout(
+        lambertian_irradiance_map_pipeline_set_0_layout);
     dev.destroyPipelineLayout(environment_render_pipeline_layout);
     dev.destroyPipelineLayout(primary_render_pipeline_layout);
-    dev.destroyPipelineLayout(generate_cubemap_pipeline_layout);
+    dev.destroyPipelineLayout(environment_map_generation_pipeline_layout);
+    dev.destroyPipelineLayout(lambertian_irradiance_map_pipeline_layout);
     dev.destroyPipeline(environment_render_pipeline);
     dev.destroyPipeline(primary_render_pipeline);
-    dev.destroyPipeline(generate_cubemap_pipeline);
+    dev.destroyPipeline(environment_map_generation_pipeline);
+    dev.destroyPipeline(lambertian_irradiance_map_pipeline);
     dev.destroyCommandPool(graphics_command_pool);
     dev.destroyCommandPool(compute_command_pool);
     for (auto const framebuffer : framebuffers) {
