@@ -1,5 +1,7 @@
 -   [Ray Tracing in One Weekend](https://raytracing.github.io)
 
+-   [wdas/brdf](https://github.com/wdas/brdf)
+
 -   [knightcrawler25/GLSL-PathTracer](https://github.com/knightcrawler25/GLSL-PathTracer)
 
 -   [mmacklin/tinsel](https://github.com/mmacklin/tinsel)
