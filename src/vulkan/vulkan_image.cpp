@@ -184,7 +184,7 @@ vma_image create_host_image(VmaAllocator vma_alloc,
               &handle, &allocation, &allocation_ret) == VK_SUCCESS,
         "");
     vma_image ret{handle, allocation, width, height, format,
-        reinterpret_cast<uint8_t*>(allocation_ret.pMappedData), {}};
+        allocation_ret.pMappedData, {}};
     vk::ImageMemoryBarrier const image_barrier{
         .srcAccessMask = vk::AccessFlagBits::eNone,
         .dstAccessMask = vk::AccessFlagBits::eNone,
@@ -212,9 +212,11 @@ vma_image create_host_image(VmaAllocator vma_alloc,
 void update_host_image(VmaAllocator vma_alloc, vma_image const& image,
     texture_data const& texture_data) {
     if (image.format == vk::Format::eR8G8B8A8Unorm) {
-        uint8_t const* src =
-            reinterpret_cast<uint8_t const*>(texture_data.data);
-        uint8_t* dst = reinterpret_cast<uint8_t*>(image.mapped);
+        using image_data_format = uint8_t;
+        image_data_format const* src =
+            reinterpret_cast<image_data_format const*>(texture_data.data);
+        image_data_format* dst =
+            reinterpret_cast<image_data_format*>(image.mapped);
         if (texture_data.channel == texture_channel::rgb) {
             for (uint32_t pixel = 0;
                  pixel < texture_data.width * texture_data.height; ++pixel) {
@@ -225,22 +227,25 @@ void update_host_image(VmaAllocator vma_alloc, vma_image const& image,
             }
         } else if (texture_data.channel == texture_channel::rgba) {
             std::copy(src, &src[texture_data.width * texture_data.height * 4],
-                reinterpret_cast<uint8_t*>(image.mapped));
+                reinterpret_cast<image_data_format*>(image.mapped));
         }
     } else if (image.format == vk::Format::eR32G32B32A32Sfloat) {
-        float const* src = reinterpret_cast<float const*>(texture_data.data);
-        float* dst = reinterpret_cast<float*>(image.mapped);
+        using image_data_format = float;
+        image_data_format const* src =
+            reinterpret_cast<image_data_format const*>(texture_data.data);
+        image_data_format* dst =
+            reinterpret_cast<image_data_format*>(image.mapped);
         if (texture_data.channel == texture_channel::rgb) {
             for (uint32_t pixel = 0;
                  pixel < texture_data.width * texture_data.height; ++pixel) {
                 dst[4 * pixel + 0] = src[3 * pixel + 0];
                 dst[4 * pixel + 1] = src[3 * pixel + 1];
                 dst[4 * pixel + 2] = src[3 * pixel + 2];
-                dst[4 * pixel + 3] = 255;
+                dst[4 * pixel + 3] = 1.0f;
             }
         } else if (texture_data.channel == texture_channel::rgba) {
             std::copy(src, &src[texture_data.width * texture_data.height * 4],
-                reinterpret_cast<uint8_t*>(image.mapped));
+                reinterpret_cast<image_data_format*>(image.mapped));
         }
     } else {
         CHECK(false, "Unsupported host image format: {}",

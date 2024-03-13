@@ -3,48 +3,47 @@
 #extension GL_EXT_scalar_block_layout: require
 
 vec3 vertices[36] = vec3[36](
-     // back face
-     vec3(-1.0, -1.0, -1.0), // bottom-left
-     vec3( 1.0,  1.0, -1.0), // top-right
-     vec3( 1.0, -1.0, -1.0), // bottom-right         
-     vec3( 1.0,  1.0, -1.0), // top-right
-     vec3(-1.0, -1.0, -1.0), // bottom-left
-     vec3(-1.0,  1.0, -1.0), // top-left
-     // front face
-     vec3(-1.0, -1.0,  1.0), // bottom-left
-     vec3( 1.0, -1.0,  1.0), // bottom-right
-     vec3( 1.0,  1.0,  1.0), // top-right
-     vec3( 1.0,  1.0,  1.0), // top-right
-     vec3(-1.0,  1.0,  1.0), // top-left
-     vec3(-1.0, -1.0,  1.0), // bottom-left
-     // left face
-     vec3(-1.0,  1.0,  1.0), // top-right
-     vec3(-1.0,  1.0, -1.0), // top-left
-     vec3(-1.0, -1.0, -1.0), // bottom-left
-     vec3(-1.0, -1.0, -1.0), // bottom-left
-     vec3(-1.0, -1.0,  1.0), // bottom-right
-     vec3(-1.0,  1.0,  1.0), // top-right
-     // right face
-     vec3( 1.0,  1.0,  1.0), // top-left
-     vec3( 1.0, -1.0, -1.0), // bottom-right
-     vec3( 1.0,  1.0, -1.0), // top-right         
-     vec3( 1.0, -1.0, -1.0), // bottom-right
-     vec3( 1.0,  1.0,  1.0), // top-left
-     vec3( 1.0, -1.0,  1.0), // bottom-left     
-     // bottom face
-     vec3(-1.0, -1.0, -1.0), // top-right
-     vec3( 1.0, -1.0, -1.0), // top-left
-     vec3( 1.0, -1.0,  1.0), // bottom-left
-     vec3( 1.0, -1.0,  1.0), // bottom-left
-     vec3(-1.0, -1.0,  1.0), // bottom-right
-     vec3(-1.0, -1.0, -1.0), // top-right
-     // top face
-     vec3(-1.0,  1.0, -1.0), // top-left
-     vec3( 1.0,  1.0 , 1.0), // bottom-right
-     vec3( 1.0,  1.0, -1.0), // top-right     
-     vec3( 1.0,  1.0,  1.0), // bottom-right
-     vec3(-1.0,  1.0, -1.0), // top-left
-     vec3(-1.0,  1.0,  1.0)  // bottom-left
+    vec3(-1.0,  1.0, -1.0),
+    vec3(-1.0, -1.0, -1.0),
+    vec3( 1.0, -1.0, -1.0),
+    vec3( 1.0, -1.0, -1.0),
+    vec3( 1.0,  1.0, -1.0),
+    vec3(-1.0,  1.0, -1.0),
+
+    vec3(-1.0, -1.0,  1.0),
+    vec3(-1.0, -1.0, -1.0),
+    vec3(-1.0,  1.0, -1.0),
+    vec3(-1.0,  1.0, -1.0),
+    vec3(-1.0,  1.0,  1.0),
+    vec3(-1.0, -1.0,  1.0),
+
+    vec3( 1.0, -1.0, -1.0),
+    vec3( 1.0, -1.0,  1.0),
+    vec3( 1.0,  1.0,  1.0),
+    vec3( 1.0,  1.0,  1.0),
+    vec3( 1.0,  1.0, -1.0),
+    vec3( 1.0, -1.0, -1.0),
+
+    vec3(-1.0, -1.0,  1.0),
+    vec3(-1.0,  1.0,  1.0),
+    vec3( 1.0,  1.0,  1.0),
+    vec3( 1.0,  1.0,  1.0),
+    vec3( 1.0, -1.0,  1.0),
+    vec3(-1.0, -1.0,  1.0),
+
+    vec3(-1.0, -1.0, -1.0),
+    vec3(-1.0, -1.0,  1.0),
+    vec3( 1.0, -1.0, -1.0),
+    vec3( 1.0, -1.0, -1.0),
+    vec3(-1.0, -1.0,  1.0),
+    vec3( 1.0, -1.0,  1.0),
+
+    vec3(-1.0,  1.0, -1.0),
+    vec3( 1.0,  1.0, -1.0),
+    vec3( 1.0,  1.0,  1.0),
+    vec3( 1.0,  1.0,  1.0),
+    vec3(-1.0,  1.0,  1.0),
+    vec3(-1.0,  1.0, -1.0)
 );
 
 layout(location = 0) out vec3 position;

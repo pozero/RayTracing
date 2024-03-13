@@ -65,8 +65,8 @@ void cook_torrance_brdf_renderer() {
         point_light{ .position = glm::vec4(10.0f, -10.0f, 10.0f, 1.0f),
                     .color = glm::vec4(300.0f, 300.0f, 300.0f, 1.0f)}
     };
-    texture_data background_hdr = get_texture_data(
-        PATH_FROM_ROOT("assets/textures/ibl_hdr_radiance.png"));
+    texture_data background_hdr =
+        get_texture_data(PATH_FROM_ROOT("assets/textures/computer_room.hdr"));
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
@@ -632,7 +632,7 @@ void cook_torrance_brdf_renderer() {
             vk::ShaderStageFlagBits::eVertex, 0,
             (uint32_t) sizeof(environment_render_pipeline_vertex_push_constant),
             &environment_render_pipeline_ps_vertex);
-        graphics_command_buffer.draw(32, 1, 0, 0);
+        graphics_command_buffer.draw(36, 1, 0, 0);
         graphics_command_buffer.endRenderPass();
         VK_CHECK(result, graphics_command_buffer.end());
         std::array const primary_render_wait_semaphores{
