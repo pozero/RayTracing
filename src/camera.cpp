@@ -82,13 +82,30 @@ glsl_raytracer_camera get_glsl_raytracer_camera(
     };
 }
 
+inline glm::mat4 get_glsl_render_camera_view(camera const& camera) {
+    return glm::lookAt(camera.position, camera.position - camera.w, -camera.v);
+}
+
+inline glm::mat4 get_glsl_render_camera_proj(
+    camera const& camera, uint32_t frame_width, uint32_t frame_height) {
+    return glm::perspectiveZO(glm::radians(camera.vertical_field_of_view),
+        float(frame_width) / float(frame_height), 0.1f, 100.0f);
+}
+
 glm::mat4 get_glsl_render_camera(
     camera const& camera, uint32_t frame_width, uint32_t frame_height) {
-    glm::mat4 const view =
-        glm::lookAt(camera.position, camera.position - camera.w, -camera.v);
+    glm::mat4 const view = get_glsl_render_camera_view(camera);
     glm::mat4 const proj =
-        glm::perspectiveZO(glm::radians(camera.vertical_field_of_view),
-            float(frame_width) / float(frame_height), 0.1f, 100.0f);
+        get_glsl_render_camera_proj(camera, frame_width, frame_height);
+    return proj * view;
+}
+
+glm::mat4 get_glsl_render_camera_for_environment_map(
+    const camera& camera, uint32_t frame_width, uint32_t frame_height) {
+    glm::mat4 const view =
+        glm::mat4{glm::mat3{get_glsl_render_camera_view(camera)}};
+    glm::mat4 const proj =
+        get_glsl_render_camera_proj(camera, frame_width, frame_height);
     return proj * view;
 }
 

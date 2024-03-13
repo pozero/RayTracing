@@ -12,6 +12,8 @@ layout (location = 3) in flat uint in_material;
 
 layout (location = 0) out vec4 out_frag;
 
+#include "../common/to_ldr.glsl"
+
 #define PI 3.1415926535
 
 struct cook_torrance_material_t {
@@ -43,10 +45,6 @@ vec3 fresnel_schlick(const in vec3 half_vec,
                      const in vec3 f0);
 
 vec3 calculate_f0(const in cook_torrance_material_t material);
-
-vec3 tone_mapping(const in vec3 color);
-
-vec3 gamma_correct(const in vec3 color);
 
 layout(push_constant, std430) uniform push_constants {
     layout(offset = 64) vec4 camera_position;
@@ -140,12 +138,4 @@ vec3 fresnel_schlick(const in vec3 half_vec,
 vec3 calculate_f0(const in cook_torrance_material_t material) {
     const vec3 non_mental_f0 = vec3(0.04);
     return mix(non_mental_f0, material.albedo.xyz, material.metallic);
-}
-
-vec3 tone_mapping(const in vec3 color) {
-    return color / (color + vec3(1.0));
-}
-
-vec3 gamma_correct(const in vec3 color) {
-    return pow(color, vec3(1.0 / 2.2));
 }

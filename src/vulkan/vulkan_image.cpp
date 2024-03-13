@@ -109,9 +109,11 @@ vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
     vk::Format format, std::vector<uint32_t> const& queues) {
     vk::Result result;
     vk::ImageView view;
-    vma_image image = create_image(vma_alloc, width, height, format, queues, {},
-        vk::ImageType::e2D,
-        vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
+    vma_image image = create_image(vma_alloc, width, height, format, queues,
+        vk::ImageCreateFlagBits::eCubeCompatible, vk::ImageType::e2D,
+        vk::ImageUsageFlagBits::eSampled |
+            vk::ImageUsageFlagBits::eTransferDst |
+            vk::ImageUsageFlagBits::eStorage,
         1, 6, vk::ImageTiling::eOptimal, vk::ImageLayout::eUndefined,
         VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
     vk::ImageMemoryBarrier const image_barrier{

@@ -65,6 +65,8 @@ void cook_torrance_brdf_renderer() {
         point_light{ .position = glm::vec4(10.0f, -10.0f, 10.0f, 1.0f),
                     .color = glm::vec4(300.0f, 300.0f, 300.0f, 1.0f)}
     };
+    texture_data background_hdr = get_texture_data(
+        PATH_FROM_ROOT("assets/textures/ibl_hdr_radiance.png"));
     ////////////////////////////
     ///* Prepare Scene Data *///
     ////////////////////////////
@@ -230,6 +232,8 @@ void cook_torrance_brdf_renderer() {
     /////////////////////////////////////////
     auto [graphics_command_pool, graphics_command_buffers] =
         create_command_buffer(dev, queues.graphics_queue_idx, FRAME_IN_FLIGHT);
+    auto [compute_command_pool, compute_command_buffers] =
+        create_command_buffer(dev, queues.compute_queue_idx, FRAME_IN_FLIGHT);
     /////////////////////////////////////////
     ///* Initialization: Command Buffers *///
     /////////////////////////////////////////
@@ -238,6 +242,20 @@ void cook_torrance_brdf_renderer() {
     ///* Initialization: Descriptors *///
     /////////////////////////////////////
     vk::DescriptorPool default_descriptor_pool = create_descriptor_pool(dev);
+    // generate cubemap pipeline
+    std::vector<vk_descriptor_set_binding> const
+        generate_cubemap_pipeline_set_0_binding{
+            {vk::DescriptorType::eCombinedImageSampler, 1},
+            {        vk::DescriptorType::eStorageImage, 1},
+    };
+    vk::DescriptorSetLayout generate_cubemap_pipeline_set_0_layout =
+        create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eCompute,
+            generate_cubemap_pipeline_set_0_binding);
+    vk::PipelineLayout generate_cubemap_pipeline_layout =
+        create_pipeline_layout(dev, {generate_cubemap_pipeline_set_0_layout});
+    std::vector<vk::DescriptorSet> generate_cubemap_pipeline_set_0 =
+        create_descriptor_set(dev, default_descriptor_pool,
+            generate_cubemap_pipeline_set_0_layout, 1);
     // primary render pipeline
     struct primary_render_pipeline_vertex_push_constant {
         glm::mat4 proj_view;
@@ -275,6 +293,26 @@ void cook_torrance_brdf_renderer() {
     std::vector<vk::DescriptorSet> primary_render_pipeline_set_1s =
         create_descriptor_set(dev, default_descriptor_pool,
             primary_render_pipeline_set_1_layout, FRAME_IN_FLIGHT);
+    // environment render pipeline
+    struct environment_render_pipeline_vertex_push_constant {
+        glm::mat4 proj_view_for_environment_map;
+    };
+    std::vector<vk_descriptor_set_binding> const
+        environment_render_pipeline_set_0_binding{
+            {vk::DescriptorType::eCombinedImageSampler, 1},
+    };
+    vk::DescriptorSetLayout environment_render_pipeline_set_0_layout =
+        create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eFragment,
+            environment_render_pipeline_set_0_binding);
+    vk::PipelineLayout environment_render_pipeline_layout =
+        create_pipeline_layout(dev,
+            {(uint32_t) sizeof(
+                environment_render_pipeline_vertex_push_constant)},
+            {vk::ShaderStageFlagBits::eVertex},
+            {environment_render_pipeline_set_0_layout});
+    std::vector<vk::DescriptorSet> environment_render_pipeline_set_0s =
+        create_descriptor_set(dev, default_descriptor_pool,
+            environment_render_pipeline_set_0_layout, FRAME_IN_FLIGHT);
     /////////////////////////////////////
     ///* Initialization: Descriptors *///
     /////////////////////////////////////
@@ -282,11 +320,19 @@ void cook_torrance_brdf_renderer() {
     //////////////////////////////////
     ///* Initialization: Pipeline *///
     //////////////////////////////////
+    vk::Pipeline generate_cubemap_pipeline = create_compute_pipeline(dev,
+        PATH_FROM_BINARY("shaders/cubemap.comp.spv"),
+        generate_cubemap_pipeline_layout, {});
     vk::Pipeline primary_render_pipeline = create_graphics_pipeline(dev,
         PATH_FROM_BINARY("shaders/cook_torrance.vert.spv"),
         PATH_FROM_BINARY("shaders/cook_torrance.frag.spv"),
         primary_render_pipeline_layout, render_pass,
         {(uint32_t) point_lights.size()}, vk::PolygonMode::eFill, true);
+    vk::Pipeline environment_render_pipeline = create_graphics_pipeline(dev,
+        PATH_FROM_BINARY("shaders/environment_map.vert.spv"),
+        PATH_FROM_BINARY("shaders/environment_map.frag.spv"),
+        environment_render_pipeline_layout, render_pass, {},
+        vk::PolygonMode::eFill, true);
     //////////////////////////////////
     ///* Initialization: Pipeline *///
     //////////////////////////////////
@@ -295,24 +341,87 @@ void cook_torrance_brdf_renderer() {
     ///* Initialization: Frame Sync Object *///
     ///////////////////////////////////////////
     uint32_t frame_counter = 0;
-    vk::FenceCreateInfo const fence_info{
-        .flags = vk::FenceCreateFlagBits::eSignaled,
-    };
-    vk::SemaphoreCreateInfo const semaphore_info{};
-    std::array<vk::Fence, FRAME_IN_FLIGHT> primary_render_fences{};
-    std::array<vk::Semaphore, FRAME_IN_FLIGHT> primary_render_semaphores{};
+    std::array<vk::Fence, FRAME_IN_FLIGHT> graphics_fences{};
+    std::array<vk::Semaphore, FRAME_IN_FLIGHT> graphics_semaphores{};
     std::array<vk::Semaphore, FRAME_IN_FLIGHT> present_semaphores{};
-    for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
-        VK_CHECK_CREATE(
-            result, primary_render_fences[i], dev.createFence(fence_info));
-        VK_CHECK_CREATE(result, primary_render_semaphores[i],
-            dev.createSemaphore(semaphore_info));
-        VK_CHECK_CREATE(
-            result, present_semaphores[i], dev.createSemaphore(semaphore_info));
+    {
+        vk::FenceCreateInfo const fence_info{
+            .flags = vk::FenceCreateFlagBits::eSignaled,
+        };
+        vk::SemaphoreCreateInfo const semaphore_info{};
+        for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
+            VK_CHECK_CREATE(
+                result, graphics_fences[i], dev.createFence(fence_info));
+            VK_CHECK_CREATE(result, graphics_semaphores[i],
+                dev.createSemaphore(semaphore_info));
+            VK_CHECK_CREATE(result, present_semaphores[i],
+                dev.createSemaphore(semaphore_info));
+        }
     }
     ///////////////////////////////////////////
     ///* Initialization: Frame Sync Object *///
     ///////////////////////////////////////////
+
+    vk::Sampler default_sampler = create_default_sampler(dev);
+
+    /////////////////////////////////////////
+    ///* Initialization: Environment Map *///
+    /////////////////////////////////////////
+    vma_image background_hdr_image;
+    vma_image environment_map;
+    {
+        uint32_t const frame_sync_idx = frame_counter % FRAME_IN_FLIGHT;
+        vk::Fence const fence = graphics_fences[frame_sync_idx];
+        vk::CommandBuffer const graphics_command_buffer =
+            graphics_command_buffers[frame_sync_idx];
+        VK_CHECK(result, dev.waitForFences(1, &fence, true, 1e9));
+        VK_CHECK(result, dev.resetFences(1, &fence));
+        VK_CHECK(result, graphics_command_buffer.reset());
+        vk::CommandBufferBeginInfo const begin_info{
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+        };
+        VK_CHECK(result, graphics_command_buffer.begin(begin_info));
+        background_hdr_image = create_texture2d_simple(dev, vma_alloc,
+            graphics_command_buffer, background_hdr.width,
+            background_hdr.height, vk::Format::eR32G32B32A32Sfloat, {},
+            vk::ImageUsageFlagBits::eSampled |
+                vk::ImageUsageFlagBits::eTransferDst);
+        // the width and height of cubemap should equal according to the spec
+        uint32_t const environment_map_size =
+            std::max(background_hdr.width, background_hdr.height);
+        environment_map = create_cubemap(dev, vma_alloc,
+            graphics_command_buffer, environment_map_size, environment_map_size,
+            vk::Format::eR32G32B32A32Sfloat, {});
+        update_texture2d_simple(vma_alloc, background_hdr_image,
+            graphics_command_buffer, background_hdr);
+        update_descriptor_image_sampler_combined(dev,
+            generate_cubemap_pipeline_set_0[0], 0, 0, default_sampler,
+            background_hdr_image.primary_view);
+        update_descriptor_storage_image(dev, generate_cubemap_pipeline_set_0[0],
+            1, 0, environment_map.primary_view);
+        graphics_command_buffer.bindPipeline(
+            vk::PipelineBindPoint::eCompute, generate_cubemap_pipeline);
+        graphics_command_buffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eCompute, generate_cubemap_pipeline_layout,
+            0, 1, &generate_cubemap_pipeline_set_0[0], 0, nullptr);
+        graphics_command_buffer.dispatch(
+            environment_map_size, environment_map_size, 6);
+        VK_CHECK(result, graphics_command_buffer.end());
+        vk::SubmitInfo const submit_info{
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = nullptr,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &graphics_command_buffer,
+            .signalSemaphoreCount = 0,
+            .pSignalSemaphores = nullptr,
+        };
+        VK_CHECK(result, queues.graphics_queue.submit(1, &submit_info, fence));
+        ++frame_counter;
+    }
+    /////////////////////////////////////////
+    ///* Initialization: Environment Map *///
+    /////////////////////////////////////////
 
     ///////////////////////////////////////
     ///* Initialization: Image, Buffer *///
@@ -323,15 +432,17 @@ void cook_torrance_brdf_renderer() {
     vma_buffer triangle_material_buffer{};
     vma_buffer point_light_buffer{};
     {
-        ++frame_counter;
-        vk::Fence const fence = primary_render_fences[0];
-        vk::CommandBuffer const command_buffer = graphics_command_buffers[0];
-        VK_CHECK(result, command_buffer.reset());
+        uint32_t const frame_sync_idx = frame_counter % FRAME_IN_FLIGHT;
+        vk::Fence const fence = graphics_fences[frame_sync_idx];
+        vk::CommandBuffer const graphics_command_buffer =
+            graphics_command_buffers[frame_sync_idx];
+        VK_CHECK(result, graphics_command_buffer.reset());
+        VK_CHECK(result, dev.waitForFences(1, &fence, true, 1e9));
         VK_CHECK(result, dev.resetFences(1, &fence));
         vk::CommandBufferBeginInfo const begin_info{
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
         };
-        VK_CHECK(result, command_buffer.begin(begin_info));
+        VK_CHECK(result, graphics_command_buffer.begin(begin_info));
         triangle_vertex_buffer = create_gpu_only_buffer(vma_alloc,
             size_in_byte(triangle_mesh.vertices), {},
             vk::BufferUsageFlagBits::eStorageBuffer);
@@ -344,13 +455,14 @@ void cook_torrance_brdf_renderer() {
         point_light_buffer =
             create_gpu_only_buffer(vma_alloc, size_in_byte(point_lights), {},
                 vk::BufferUsageFlagBits::eStorageBuffer);
-        update_buffer(vma_alloc, command_buffer, triangle_vertex_buffer,
-            to_span(triangle_mesh.vertices), 0);
-        update_buffer(vma_alloc, command_buffer, triangle_face_buffer,
+        update_buffer(vma_alloc, graphics_command_buffer,
+            triangle_vertex_buffer, to_span(triangle_mesh.vertices), 0);
+        update_buffer(vma_alloc, graphics_command_buffer, triangle_face_buffer,
             to_span(triangle_mesh.triangles), 0);
-        update_buffer(vma_alloc, command_buffer, triangle_material_buffer,
+        update_buffer(vma_alloc, graphics_command_buffer,
+            triangle_material_buffer,
             to_span(triangle_mesh.cook_torrance_materials), 0);
-        update_buffer(vma_alloc, command_buffer, point_light_buffer,
+        update_buffer(vma_alloc, graphics_command_buffer, point_light_buffer,
             to_span(point_lights), 0);
         for (uint32_t frame_idx = 0; frame_idx < FRAME_IN_FLIGHT; ++frame_idx) {
             // primary render set 0
@@ -367,18 +479,24 @@ void cook_torrance_brdf_renderer() {
             update_descriptor_storage_buffer_whole(dev,
                 primary_render_pipeline_set_1s[frame_idx], 1, 0,
                 point_light_buffer);
+            // enviroment render set 0
+            update_descriptor_image_sampler_combined(dev,
+                environment_render_pipeline_set_0s[frame_idx], 0, 0,
+                default_sampler, environment_map.primary_view);
         }
-        VK_CHECK(result, command_buffer.end());
-        vk::SubmitInfo const submit_info{
+        VK_CHECK(result, graphics_command_buffer.end());
+        vk::SubmitInfo const graphics_submit_info{
             .waitSemaphoreCount = 0,
             .pWaitSemaphores = nullptr,
             .pWaitDstStageMask = nullptr,
             .commandBufferCount = 1,
-            .pCommandBuffers = &command_buffer,
+            .pCommandBuffers = &graphics_command_buffer,
             .signalSemaphoreCount = 0,
             .pSignalSemaphores = nullptr,
         };
-        VK_CHECK(result, queues.graphics_queue.submit(1, &submit_info, fence));
+        VK_CHECK(result,
+            queues.graphics_queue.submit(1, &graphics_submit_info, fence));
+        ++frame_counter;
     }
     ///////////////////////////////////////
     ///* Initialization: Image, Buffer *///
@@ -405,10 +523,9 @@ void cook_torrance_brdf_renderer() {
         ///////////////////////
 
         uint32_t const frame_sync_idx = frame_counter % FRAME_IN_FLIGHT;
-        vk::Fence const primary_render_fence =
-            primary_render_fences[frame_sync_idx];
-        vk::Semaphore const primary_render_semaphore =
-            primary_render_semaphores[frame_sync_idx];
+        vk::Fence const graphics_fence = graphics_fences[frame_sync_idx];
+        vk::Semaphore const graphics_semaphore =
+            graphics_semaphores[frame_sync_idx];
         vk::Semaphore const present_semaphore =
             present_semaphores[frame_sync_idx];
         vk::CommandBuffer const graphics_command_buffer =
@@ -420,6 +537,9 @@ void cook_torrance_brdf_renderer() {
             primary_render_pipeline_set_0s[frame_sync_idx],
             primary_render_pipeline_set_1s[frame_sync_idx],
         };
+        std::array const environment_render_pipeline_sets{
+            environment_render_pipeline_set_0s[frame_sync_idx],
+        };
         primary_render_pipeline_vertex_push_constant const
             primary_render_pipeline_ps_vertex{
                 .proj_view =
@@ -429,12 +549,17 @@ void cook_torrance_brdf_renderer() {
             primary_render_pipeline_ps_fragment{
                 .camera_position = glm::vec4{camera.position, 1.0f},
         };
+        environment_render_pipeline_vertex_push_constant
+            environment_render_pipeline_ps_vertex{
+                .proj_view_for_environment_map =
+                    get_glsl_render_camera_for_environment_map(
+                        camera, win_width, win_height),
+            };
 
-        /////////////////////////////
-        ///* Primary Render Loop *///
-        /////////////////////////////
-        VK_CHECK(
-            result, dev.waitForFences(1, &primary_render_fence, true, 1e9));
+        //////////////////
+        ///* Graphics *///
+        //////////////////
+        VK_CHECK(result, dev.waitForFences(1, &graphics_fence, true, 1e9));
         uint32_t swapchain_image_idx = 0;
         result = swapchain_acquire_next_image_wrapper(dev, swapchain, 1e9,
             present_semaphore, nullptr, &swapchain_image_idx);
@@ -445,7 +570,7 @@ void cook_torrance_brdf_renderer() {
         CHECK(result == vk::Result::eSuccess ||
                   result == vk::Result::eSuboptimalKHR,
             "");
-        VK_CHECK(result, dev.resetFences(1, &primary_render_fence));
+        VK_CHECK(result, dev.resetFences(1, &graphics_fence));
         VK_CHECK(result, graphics_command_buffer.reset());
         VK_CHECK(result, graphics_command_buffer.begin(begin_info));
         vk::Rect2D const render_area{
@@ -476,6 +601,7 @@ void cook_torrance_brdf_renderer() {
         graphics_command_buffer.setViewport(0, 1, &viewport);
         vk::Rect2D const scissor = render_area;
         graphics_command_buffer.setScissor(0, 1, &scissor);
+        // primary render
         graphics_command_buffer.bindPipeline(
             vk::PipelineBindPoint::eGraphics, primary_render_pipeline);
         graphics_command_buffer.bindDescriptorSets(
@@ -493,6 +619,20 @@ void cook_torrance_brdf_renderer() {
             &primary_render_pipeline_ps_fragment);
         graphics_command_buffer.draw(
             3 * (uint32_t) triangle_mesh.triangles.size(), 1, 0, 0);
+        // enviroment render
+        graphics_command_buffer.bindPipeline(
+            vk::PipelineBindPoint::eGraphics, environment_render_pipeline);
+        graphics_command_buffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics,
+            environment_render_pipeline_layout, 0,
+            (uint32_t) environment_render_pipeline_sets.size(),
+            environment_render_pipeline_sets.data(), 0, nullptr);
+        graphics_command_buffer.pushConstants(
+            environment_render_pipeline_layout,
+            vk::ShaderStageFlagBits::eVertex, 0,
+            (uint32_t) sizeof(environment_render_pipeline_vertex_push_constant),
+            &environment_render_pipeline_ps_vertex);
+        graphics_command_buffer.draw(32, 1, 0, 0);
         graphics_command_buffer.endRenderPass();
         VK_CHECK(result, graphics_command_buffer.end());
         std::array const primary_render_wait_semaphores{
@@ -502,7 +642,7 @@ void cook_torrance_brdf_renderer() {
             vk::PipelineStageFlags{
                 vk::PipelineStageFlagBits::eColorAttachmentOutput},
         };
-        vk::SubmitInfo const primary_render_submit_info{
+        vk::SubmitInfo const graphics_submit_info{
             .waitSemaphoreCount =
                 (uint32_t) primary_render_wait_semaphores.size(),
             .pWaitSemaphores = primary_render_wait_semaphores.data(),
@@ -510,14 +650,13 @@ void cook_torrance_brdf_renderer() {
             .commandBufferCount = 1,
             .pCommandBuffers = &graphics_command_buffer,
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &primary_render_semaphore,
+            .pSignalSemaphores = &graphics_semaphore,
         };
-        VK_CHECK(
-            result, queues.graphics_queue.submit(
-                        1, &primary_render_submit_info, primary_render_fence));
+        VK_CHECK(result, queues.graphics_queue.submit(
+                             1, &graphics_submit_info, graphics_fence));
         vk::PresentInfoKHR const present_info{
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &primary_render_semaphore,
+            .pWaitSemaphores = &graphics_semaphore,
             .swapchainCount = 1,
             .pSwapchains = &swapchain,
             .pImageIndices = &swapchain_image_idx,
@@ -529,36 +668,48 @@ void cook_torrance_brdf_renderer() {
         } else {
             CHECK(result == vk::Result::eSuccess, "");
         }
-        /////////////////////////////
-        ///* Primary Render Loop *///
-        /////////////////////////////
+        //////////////////
+        ///* Graphics *///
+        //////////////////
 
         glfwPollEvents();
         ++frame_counter;
     }
+
     /////////////////
     ///* Cleanup *///
     /////////////////
+    std::free(background_hdr.data);
     glfwTerminate();
     VK_CHECK(result, dev.waitIdle());
     cleanup_staging_buffer(vma_alloc);
     cleanup_staging_image(vma_alloc);
     destroy_dummy_buffer(vma_alloc);
+    dev.destroySampler(default_sampler);
     destroy_buffer(vma_alloc, triangle_vertex_buffer);
     destroy_buffer(vma_alloc, triangle_face_buffer);
     destroy_buffer(vma_alloc, triangle_material_buffer);
     destroy_buffer(vma_alloc, point_light_buffer);
+    destroy_image(dev, vma_alloc, background_hdr_image);
+    destroy_image(dev, vma_alloc, environment_map);
     dev.destroyDescriptorPool(default_descriptor_pool);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
-        dev.destroyFence(primary_render_fences[i]);
-        dev.destroySemaphore(primary_render_semaphores[i]);
+        dev.destroyFence(graphics_fences[i]);
+        dev.destroySemaphore(graphics_semaphores[i]);
         dev.destroySemaphore(present_semaphores[i]);
     }
+    dev.destroyDescriptorSetLayout(environment_render_pipeline_set_0_layout);
     dev.destroyDescriptorSetLayout(primary_render_pipeline_set_0_layout);
     dev.destroyDescriptorSetLayout(primary_render_pipeline_set_1_layout);
+    dev.destroyDescriptorSetLayout(generate_cubemap_pipeline_set_0_layout);
+    dev.destroyPipelineLayout(environment_render_pipeline_layout);
     dev.destroyPipelineLayout(primary_render_pipeline_layout);
+    dev.destroyPipelineLayout(generate_cubemap_pipeline_layout);
+    dev.destroyPipeline(environment_render_pipeline);
     dev.destroyPipeline(primary_render_pipeline);
+    dev.destroyPipeline(generate_cubemap_pipeline);
     dev.destroyCommandPool(graphics_command_pool);
+    dev.destroyCommandPool(compute_command_pool);
     for (auto const framebuffer : framebuffers) {
         dev.destroyFramebuffer(framebuffer);
     }
