@@ -45,7 +45,7 @@ vma_image create_image(VmaAllocator vma_alloc, uint32_t width, uint32_t height,
               &allocation, nullptr) == VK_SUCCESS,
         "");
     return vma_image{
-        image, allocation, width, height, (vk::Format) format, nullptr, {}};
+        image, allocation, width, height, (vk::Format) format, nullptr, {}, {}};
 }
 
 vma_image create_texture2d_simple(vk::Device device, VmaAllocator vma_alloc,
@@ -184,7 +184,7 @@ vma_image create_host_image(VmaAllocator vma_alloc,
               &handle, &allocation, &allocation_ret) == VK_SUCCESS,
         "");
     vma_image ret{handle, allocation, width, height, format,
-        allocation_ret.pMappedData, {}};
+        allocation_ret.pMappedData, {}, {}};
     vk::ImageMemoryBarrier const image_barrier{
         .srcAccessMask = vk::AccessFlagBits::eNone,
         .dstAccessMask = vk::AccessFlagBits::eNone,
@@ -331,9 +331,14 @@ vk::Sampler create_default_sampler(vk::Device device) {
 
 void destroy_image(
     vk::Device device, VmaAllocator vma_alloc, vma_image const& image) {
-    vmaDestroyImage(vma_alloc, image.image, image.allocation);
+    if (image.image && image.allocation) {
+        vmaDestroyImage(vma_alloc, image.image, image.allocation);
+    }
     if (image.primary_view) {
         device.destroyImageView(image.primary_view);
+    }
+    for (auto const view : image.mipmap_views) {
+        device.destroyImageView(view);
     }
 }
 

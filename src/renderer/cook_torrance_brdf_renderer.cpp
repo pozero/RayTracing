@@ -391,6 +391,8 @@ void cook_torrance_brdf_renderer() {
     vma_image background_hdr_image;
     vma_image environment_map;
     vma_image lambertian_irradiance_map;
+    vma_image prefiltered_environment_map;
+    vma_image brdf_lut;
     {
         uint32_t const frame_sync_idx = frame_counter % FRAME_IN_FLIGHT;
         vk::Fence const fence = graphics_fences[frame_sync_idx];
@@ -779,6 +781,8 @@ void cook_torrance_brdf_renderer() {
     destroy_image(dev, vma_alloc, background_hdr_image);
     destroy_image(dev, vma_alloc, environment_map);
     destroy_image(dev, vma_alloc, lambertian_irradiance_map);
+    destroy_image(dev, vma_alloc, prefiltered_environment_map);
+    destroy_image(dev, vma_alloc, brdf_lut);
     dev.destroyDescriptorPool(default_descriptor_pool);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         dev.destroyFence(graphics_fences[i]);

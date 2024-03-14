@@ -15,6 +15,7 @@ struct vma_image {
     vk::Format format;
     void* mapped;
     vk::ImageView primary_view;
+    std::vector<vk::ImageView> mipmap_views;
 };
 
 vma_image create_image(VmaAllocator vma_alloc, uint32_t width, uint32_t height,
@@ -31,6 +32,10 @@ vma_image create_texture2d_simple(vk::Device device, VmaAllocator vma_alloc,
 vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
     vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
     vk::Format format, std::vector<uint32_t> const& queues);
+
+vma_image create_cubemap_with_mipmap(vk::Device device, VmaAllocator vma_alloc,
+    vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
+    uint32_t level, vk::Format format, std::vector<uint32_t> const& queues);
 
 vma_image create_host_image(VmaAllocator vma_alloc,
     vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
