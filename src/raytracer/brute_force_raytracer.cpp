@@ -322,18 +322,18 @@ void brute_force_raytracer() {
                 texture_datas[texture_idx].format == texture_format::unorm ?
                     vk::Format::eR8G8B8A8Unorm :
                     vk::Format::eR32G32B32A32Sfloat;
-            textures.push_back(create_texture2d_simple(dev, vma_alloc,
-                command_buffer, texture_datas[texture_idx].width,
-                texture_datas[texture_idx].height, format, {},
+            textures.push_back(create_texture2d(dev, vma_alloc, command_buffer,
+                texture_datas[texture_idx].width,
+                texture_datas[texture_idx].height, 1, format, {},
                 vk::ImageUsageFlagBits::eSampled |
                     vk::ImageUsageFlagBits::eTransferDst));
-            update_texture2d_simple(vma_alloc, textures[texture_idx],
-                command_buffer, texture_datas[texture_idx]);
+            update_texture2d(vma_alloc, textures[texture_idx], command_buffer,
+                texture_datas[texture_idx]);
         }
         for (uint32_t frame_idx = 0; frame_idx < FRAME_IN_FLIGHT; ++frame_idx) {
             accumulation_images[frame_idx] =
-                create_texture2d_simple(dev, vma_alloc, command_buffer,
-                    win_width, win_height, vk::Format::eR32G32B32A32Sfloat,
+                create_texture2d(dev, vma_alloc, command_buffer, win_width,
+                    win_height, 1, vk::Format::eR32G32B32A32Sfloat,
                     std::vector<uint32_t>{
                         queues.compute_queue_idx,
                         queues.graphics_queue_idx,

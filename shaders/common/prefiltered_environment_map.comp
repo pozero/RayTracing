@@ -1,0 +1,106 @@
+#version 460
+
+#extension GL_EXT_scalar_block_layout: require
+
+layout(constant_id = 0) const uint MIP_LEVEL = 1;
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant, std430) uniform push_constant {
+    uint mip_level;
+};
+
+layout(set = 0, binding = 0) uniform samplerCube environment_map;
+
+layout(rgba32f, set = 0, binding = 1) uniform imageCube 
+    prefiltered_environment_maps[MIP_LEVEL];
+
+#define PI 3.1415926535
+
+#include "../common/to_ldr.glsl"
+
+float binary_decimal_inverse(in uint bits) 
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+}
+
+// Hammersley low discrepancy sequence, see
+// http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
+vec2 hammersley(const in uint i, 
+                const in uint N)
+{
+    // i should not be greater than N
+    return vec2(float(i)/float(N), binary_decimal_inverse(i));
+}
+
+vec3 distribution_ggx_importance_sampling(const in vec2 xi, 
+                                          const in vec3 normal,
+                                          const in float roughness) {
+    const float a = roughness * roughness;
+    const float phi = 2.0 * PI * xi.x;
+    // derivation see https://agraphicsguynotes.com/posts/sample_microfacet_brdf/
+    const float cos_theta = sqrt((1 - xi.y) / (xi.y * (a * a - 1) + 1.0));
+    const float sin_theta = sqrt(1 - cos_theta * cos_theta);
+    const vec3 coord_in_normal_space = vec3(cos(phi) * sin_theta, cos_theta, 
+        sin(phi) * sin_theta);
+    const vec3 up = normal;
+    // would introduce subtle circle border around x axis, which should be fine
+    const vec3 front = abs(up.x) < 0.999 ? normalize(cross(vec3(1.0, 0.0, 0.0), up)) :
+        normalize(cross(up, vec3(0.0, 1.0, 0.0)));
+    const vec3 left = normalize(cross(front, up));
+    const vec3 sample_direction = coord_in_normal_space.x * front + 
+        coord_in_normal_space.y * up +
+        coord_in_normal_space.z * left;
+    return normalize(sample_direction);
+}
+
+void main() {
+    const vec2 normalized_face_tex = 
+        vec2(2.0) * (vec2(gl_GlobalInvocationID.st) / 
+        vec2(imageSize(prefiltered_environment_maps[mip_level]))) - vec2(1.0);
+    const vec3 directions[6] = vec3[6](
+        // https://docs.vulkan.org/spec/latest/chapters/textures.html#_cube_map_face_selection
+        // positive x, (1, -t, -s)
+        vec3(1.0, -normalized_face_tex.t, -normalized_face_tex.s),
+        // negative x, (-1, -t, s)
+        vec3(-1.0, -normalized_face_tex.t, normalized_face_tex.s),
+        // positive y, (s, 1, t)
+        vec3(normalized_face_tex.s, 1.0, normalized_face_tex.t),
+        // negative y, (s, -1, -t)
+        vec3(normalized_face_tex.s, -1.0, -normalized_face_tex.t),
+        // positive z, (s, -t, 1)
+        vec3(normalized_face_tex.s, -normalized_face_tex.t, 1.0),
+        // negative z, (-s, -t, -1)
+        vec3(-normalized_face_tex.s, -normalized_face_tex.t, -1.0)
+    );
+    for (uint i = 0; i < 6; ++ i) {
+        const ivec3 prefiltered_environment_map_tex = ivec3(gl_GlobalInvocationID.xy, i);
+        const vec3 normal = normalize(directions[i]);
+        const vec3 view = normal;
+        const uint sample_count = 1024;
+        const float roughness = float(mip_level) / float(MIP_LEVEL);
+        float total_weight = 0.0;
+        vec3 prefiltered = vec3(0.0);
+        for (uint j = 0; j < sample_count; ++ j) {
+            const vec2 xi = hammersley(i, sample_count);
+            const vec3 half_vec = 
+                distribution_ggx_importance_sampling(xi, normal, roughness);
+            const vec3 light_vec = 
+                normalize(2.0 * dot(view, half_vec) * half_vec - view);
+            const float n_dot_l = max(dot(normal, light_vec), 0.0);
+            if (n_dot_l > 0.0) {
+                prefiltered += tone_mapping(texture(environment_map, light_vec).rgb) * 
+                    n_dot_l;
+                total_weight += n_dot_l;
+            }
+        }
+        prefiltered = prefiltered / total_weight;
+        imageStore(prefiltered_environment_maps[mip_level], 
+            prefiltered_environment_map_tex, vec4(prefiltered, 1.0));
+    }
+}

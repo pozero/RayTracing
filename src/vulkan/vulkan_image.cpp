@@ -45,18 +45,18 @@ vma_image create_image(VmaAllocator vma_alloc, uint32_t width, uint32_t height,
               &allocation, nullptr) == VK_SUCCESS,
         "");
     return vma_image{
-        image, allocation, width, height, (vk::Format) format, nullptr, {}, {}};
+        image, allocation, width, height, (vk::Format) format, nullptr, {}};
 }
 
-vma_image create_texture2d_simple(vk::Device device, VmaAllocator vma_alloc,
+vma_image create_texture2d(vk::Device device, VmaAllocator vma_alloc,
     vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
-    vk::Format format, std::vector<uint32_t> const& queues,
+    uint32_t level, vk::Format format, std::vector<uint32_t> const& queues,
     vk::ImageUsageFlags usage) {
     vk::Result result;
     vk::ImageView view;
     vma_image image = create_image(vma_alloc, width, height, format, queues,
         vk::ImageCreateFlags{}, vk::ImageType::e2D,
-        vk::ImageUsageFlagBits::eSampled | usage, 1, 1,
+        vk::ImageUsageFlagBits::eSampled | usage, level, 1,
         vk::ImageTiling::eOptimal, vk::ImageLayout::eUndefined,
         VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
     vk::ImageMemoryBarrier const image_barrier{
@@ -71,7 +71,7 @@ vma_image create_texture2d_simple(vk::Device device, VmaAllocator vma_alloc,
             vk::ImageSubresourceRange{
                                       .aspectMask = vk::ImageAspectFlagBits::eColor,
                                       .baseMipLevel = 0,
-                                      .levelCount = 1,
+                                      .levelCount = level,
                                       .baseArrayLayer = 0,
                                       .layerCount = 1,
                                       },
@@ -94,7 +94,7 @@ vma_image create_texture2d_simple(vk::Device device, VmaAllocator vma_alloc,
             vk::ImageSubresourceRange{
                                  .aspectMask = vk::ImageAspectFlagBits::eColor,
                                  .baseMipLevel = 0,
-                                 .levelCount = 1,
+                                 .levelCount = level,
                                  .baseArrayLayer = 0,
                                  .layerCount = 1,
                                  },
@@ -106,7 +106,7 @@ vma_image create_texture2d_simple(vk::Device device, VmaAllocator vma_alloc,
 
 vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
     vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
-    vk::Format format, std::vector<uint32_t> const& queues) {
+    uint32_t level, vk::Format format, std::vector<uint32_t> const& queues) {
     vk::Result result;
     vk::ImageView view;
     vma_image image = create_image(vma_alloc, width, height, format, queues,
@@ -114,7 +114,7 @@ vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
         vk::ImageUsageFlagBits::eSampled |
             vk::ImageUsageFlagBits::eTransferDst |
             vk::ImageUsageFlagBits::eStorage,
-        1, 6, vk::ImageTiling::eOptimal, vk::ImageLayout::eUndefined,
+        level, 6, vk::ImageTiling::eOptimal, vk::ImageLayout::eUndefined,
         VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
     vk::ImageMemoryBarrier const image_barrier{
         .srcAccessMask = vk::AccessFlagBits::eNone,
@@ -128,14 +128,14 @@ vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
             vk::ImageSubresourceRange{
                                       .aspectMask = vk::ImageAspectFlagBits::eColor,
                                       .baseMipLevel = 0,
-                                      .levelCount = 1,
+                                      .levelCount = level,
                                       .baseArrayLayer = 0,
                                       .layerCount = 6},
     };
     command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eNone,
         vk::PipelineStageFlagBits::eNone, vk::DependencyFlags{}, 0, nullptr, 0,
         nullptr, 1, &image_barrier);
-    vk::ImageViewCreateInfo const view_info{
+    vk::ImageViewCreateInfo view_info{
         .image = image.image,
         .viewType = vk::ImageViewType::eCube,
         .format = format,
@@ -147,7 +147,7 @@ vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
             vk::ImageSubresourceRange{
                                            .aspectMask = vk::ImageAspectFlagBits::eColor,
                                            .baseMipLevel = 0,
-                                           .levelCount = 1,
+                                           .levelCount = level,
                                            .baseArrayLayer = 0,
                                            .layerCount = 6},
     };
@@ -184,7 +184,7 @@ vma_image create_host_image(VmaAllocator vma_alloc,
               &handle, &allocation, &allocation_ret) == VK_SUCCESS,
         "");
     vma_image ret{handle, allocation, width, height, format,
-        allocation_ret.pMappedData, {}, {}};
+        allocation_ret.pMappedData, {}};
     vk::ImageMemoryBarrier const image_barrier{
         .srcAccessMask = vk::AccessFlagBits::eNone,
         .dstAccessMask = vk::AccessFlagBits::eNone,
@@ -254,7 +254,7 @@ void update_host_image(VmaAllocator vma_alloc, vma_image const& image,
     vmaFlushAllocation(vma_alloc, image.allocation, 0, VK_WHOLE_SIZE);
 }
 
-void update_texture2d_simple(VmaAllocator vma_alloc, vma_image const& image,
+void update_texture2d(VmaAllocator vma_alloc, vma_image const& image,
     vk::CommandBuffer command_buffer, texture_data const& texture_data) {
     vma_image staging;
     vk::ImageSubresourceLayers const whole_layer{
@@ -336,9 +336,6 @@ void destroy_image(
     }
     if (image.primary_view) {
         device.destroyImageView(image.primary_view);
-    }
-    for (auto const view : image.mipmap_views) {
-        device.destroyImageView(view);
     }
 }
 
