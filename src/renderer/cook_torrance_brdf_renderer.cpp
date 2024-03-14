@@ -656,7 +656,7 @@ void cook_torrance_brdf_renderer() {
             // enviroment render set 0
             update_descriptor_image_sampler_combined(dev,
                 environment_render_pipeline_set_0s[frame_idx], 0, 0,
-                default_sampler, environment_map.primary_view);
+                default_sampler, prefiltered_environment_map.primary_view);
         }
         VK_CHECK(result, graphics_command_buffer.end());
         vk::SubmitInfo const graphics_submit_info{

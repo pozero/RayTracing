@@ -44,19 +44,16 @@ vec3 distribution_ggx_importance_sampling(const in vec2 xi,
     const float a = roughness * roughness;
     const float phi = 2.0 * PI * xi.x;
     // derivation see https://agraphicsguynotes.com/posts/sample_microfacet_brdf/
-    const float cos_theta = sqrt((1 - xi.y) / (xi.y * (a * a - 1) + 1.0));
-    const float sin_theta = sqrt(1 - cos_theta * cos_theta);
-    const vec3 coord_in_normal_space = vec3(cos(phi) * sin_theta, cos_theta, 
-        sin(phi) * sin_theta);
-    const vec3 up = normal;
-    // would introduce subtle circle border around x axis, which should be fine
-    const vec3 front = abs(up.x) < 0.999 ? normalize(cross(vec3(1.0, 0.0, 0.0), up)) :
-        normalize(cross(up, vec3(0.0, 1.0, 0.0)));
-    const vec3 left = normalize(cross(front, up));
-    const vec3 sample_direction = coord_in_normal_space.x * front + 
-        coord_in_normal_space.y * up +
-        coord_in_normal_space.z * left;
-    return normalize(sample_direction);
+    const float cos_theta = sqrt((1.0 - xi.y) / (xi.y * (a * a - 1.0) + 1.0));
+    const float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+    const vec3 coord_in_normal_space = vec3(cos(phi) * sin_theta, sin(phi) * sin_theta,
+        cos_theta);
+    const vec3 up = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    const vec3 tangent   = normalize(cross(up, normal));
+    const vec3 bitangent = cross(normal, tangent);
+    const vec3 sample_vec = tangent * coord_in_normal_space.x + 
+        bitangent * coord_in_normal_space.y + normal * coord_in_normal_space.z;
+    return normalize(sample_vec);
 }
 
 void main() {
@@ -87,7 +84,7 @@ void main() {
         float total_weight = 0.0;
         vec3 prefiltered = vec3(0.0);
         for (uint j = 0; j < sample_count; ++ j) {
-            const vec2 xi = hammersley(i, sample_count);
+            const vec2 xi = hammersley(j, sample_count);
             const vec3 half_vec = 
                 distribution_ggx_importance_sampling(xi, normal, roughness);
             const vec3 light_vec = 
