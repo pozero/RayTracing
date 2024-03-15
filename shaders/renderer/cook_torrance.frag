@@ -5,6 +5,8 @@
 
 layout(constant_id = 0) const uint POINT_LIGHT_COUNT = 1;
 
+layout(constant_id = 1) const uint MAX_ROUGHNESS_MIP = 1;
+
 layout (location = 0) in vec3 in_position;
 layout (location = 1) in vec3 in_normal;
 layout (location = 2) in vec2 in_uv;
@@ -65,6 +67,10 @@ layout(std430, set = 1, binding = 1) readonly buffer point_lights {
 
 layout(set = 1, binding = 2) uniform samplerCube lambertian_diffuse_irradiance_map;
 
+layout(set = 1, binding = 3) uniform samplerCube prefiltered_environment_map;
+
+layout(set = 1, binding = 4) uniform sampler2D brdf_lut;
+
 void main() {
     const cook_torrance_material_t material = materials[nonuniformEXT(in_material)];
     const vec3 normal = normalize(in_normal);
@@ -92,12 +98,22 @@ void main() {
         const vec3 diffuse = (k_diffuse * material.albedo.xyz) / PI;
         lo += (diffuse + specular) * radiance * n_dot_l;
     }
-    const vec3 k_diffuse_ambient = 1.0 - fresnel_schlick_roughness(normal, view, f0, material.roughness);
+    const vec3 relfect_vec = reflect(-view, normal);
+    const vec3 k_specular_ambient = fresnel_schlick_roughness(normal, view, f0, material.roughness);
+    const vec3 k_diffuse_ambient = (1.0 - material.metallic) * (1.0 - k_specular_ambient);
     const vec3 lambertian_diffuse_irradiance = texture(lambertian_diffuse_irradiance_map, normal).rgb;
-    const vec3 ambient = k_diffuse_ambient * lambertian_diffuse_irradiance * material.albedo.xyz * material.ao;
+    const vec3 diffuse_ambient = lambertian_diffuse_irradiance * material.albedo.xyz;
+    const vec3 prefiltered_environment = textureLod(prefiltered_environment_map, relfect_vec, 
+        material.roughness * MAX_ROUGHNESS_MIP).rgb;
+    const vec2 brdf_environment = 
+        texture(brdf_lut, vec2(max(dot(normal, view), 0.0), material.roughness)).rg;
+    const vec3 specular_ambient = 
+        prefiltered_environment * (brdf_environment.x * k_specular_ambient + brdf_environment.y);
+    const vec3 ambient = (k_diffuse_ambient * diffuse_ambient + specular_ambient) * material.ao;
     const vec3 linear_color = ambient + lo;
     const vec3 corrected_color = gamma_correct(tone_mapping(linear_color));
     out_frag = vec4(corrected_color, 1.0);
+    // out_frag = vec4(vec2(isnan(brdf_environment)), 0.0, 1.0);
 }
 
 // \frac{\alpha^2}{\pi((n\cdot h)^2(\alpha^2-1)+1)^2}

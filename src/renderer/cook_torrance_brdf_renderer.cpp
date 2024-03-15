@@ -239,6 +239,7 @@ void cook_torrance_brdf_renderer() {
     /////////////////////////////////////////
 
     uint32_t constexpr PREFILTERED_ENVIRONMENT_MAP_MIP_LEVEL = 4;
+    uint32_t constexpr BRDF_LUT_SIZE = 512;
 
     /////////////////////////////////////
     ///* Initialization: Descriptors *///
@@ -296,6 +297,19 @@ void cook_torrance_brdf_renderer() {
     std::vector<vk::DescriptorSet> prefiltered_environment_map_pipeline_set_0 =
         create_descriptor_set(dev, default_descriptor_pool,
             prefiltered_environment_map_pipeline_set_0_layout, 1);
+    // brdf lut generation pipeline
+    std::vector<vk_descriptor_set_binding> const
+        brdf_lut_pipeline_set_0_binding{
+            {vk::DescriptorType::eStorageImage, 1}
+    };
+    vk::DescriptorSetLayout brdf_lut_pipeline_set_0_layout =
+        create_descriptor_set_layout(dev, vk::ShaderStageFlagBits::eCompute,
+            brdf_lut_pipeline_set_0_binding);
+    vk::PipelineLayout brdf_lut_pipeline_layout =
+        create_pipeline_layout(dev, {brdf_lut_pipeline_set_0_layout});
+    std::vector<vk::DescriptorSet> brdf_lut_pipeline_set_0 =
+        create_descriptor_set(
+            dev, default_descriptor_pool, brdf_lut_pipeline_set_0_layout, 1);
     // primary render pipeline
     struct primary_render_pipeline_vertex_push_constant {
         glm::mat4 proj_view;
@@ -313,6 +327,8 @@ void cook_torrance_brdf_renderer() {
         primary_render_pipeline_set_1_binding{
             {       vk::DescriptorType::eStorageBuffer, 1},
             {       vk::DescriptorType::eStorageBuffer, 1},
+            {vk::DescriptorType::eCombinedImageSampler, 1},
+            {vk::DescriptorType::eCombinedImageSampler, 1},
             {vk::DescriptorType::eCombinedImageSampler, 1},
     };
     vk::DescriptorSetLayout primary_render_pipeline_set_0_layout =
@@ -372,11 +388,15 @@ void cook_torrance_brdf_renderer() {
         dev, PATH_FROM_BINARY("shaders/prefiltered_environment_map.comp.spv"),
         prefiltered_environment_map_pipeline_layout,
         {PREFILTERED_ENVIRONMENT_MAP_MIP_LEVEL});
+    vk::Pipeline brdf_lut_pipeline = create_compute_pipeline(dev,
+        PATH_FROM_BINARY("shaders/brdf_lut.comp.spv"), brdf_lut_pipeline_layout,
+        {});
     vk::Pipeline primary_render_pipeline = create_graphics_pipeline(dev,
         PATH_FROM_BINARY("shaders/cook_torrance.vert.spv"),
         PATH_FROM_BINARY("shaders/cook_torrance.frag.spv"),
         primary_render_pipeline_layout, render_pass,
-        {(uint32_t) point_lights.size()}, vk::PolygonMode::eFill, true);
+        {(uint32_t) point_lights.size(), PREFILTERED_ENVIRONMENT_MAP_MIP_LEVEL},
+        vk::PolygonMode::eFill, true);
     vk::Pipeline environment_render_pipeline = create_graphics_pipeline(dev,
         PATH_FROM_BINARY("shaders/environment_map.vert.spv"),
         PATH_FROM_BINARY("shaders/environment_map.frag.spv"),
@@ -453,6 +473,10 @@ void cook_torrance_brdf_renderer() {
             graphics_command_buffer, environment_map_size, environment_map_size,
             PREFILTERED_ENVIRONMENT_MAP_MIP_LEVEL,
             vk::Format::eR32G32B32A32Sfloat, {});
+        brdf_lut = create_texture2d(dev, vma_alloc, graphics_command_buffer,
+            BRDF_LUT_SIZE, BRDF_LUT_SIZE, 1, vk::Format::eR32G32Sfloat, {},
+            vk::ImageUsageFlagBits::eSampled |
+                vk::ImageUsageFlagBits::eStorage);
         for (uint32_t level = 0; level < PREFILTERED_ENVIRONMENT_MAP_MIP_LEVEL;
              ++level) {
             vk::ImageViewCreateInfo const view_info{
@@ -497,6 +521,15 @@ void cook_torrance_brdf_renderer() {
             vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eComputeShader, {}, 0, nullptr, 0,
             nullptr, 1, &background_hdr_upload_barrier);
+        // brdf lut generation pipeline
+        update_descriptor_storage_image(
+            dev, brdf_lut_pipeline_set_0[0], 0, 0, brdf_lut.primary_view);
+        graphics_command_buffer.bindPipeline(
+            vk::PipelineBindPoint ::eCompute, brdf_lut_pipeline);
+        graphics_command_buffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eCompute, brdf_lut_pipeline_layout, 0, 1,
+            &brdf_lut_pipeline_set_0[0], 0, nullptr);
+        graphics_command_buffer.dispatch(BRDF_LUT_SIZE, BRDF_LUT_SIZE, 1);
         // environment map generation pipeline
         update_descriptor_image_sampler_combined(dev,
             environment_map_generation_pipeline_set_0[0], 0, 0, default_sampler,
@@ -653,6 +686,12 @@ void cook_torrance_brdf_renderer() {
             update_descriptor_image_sampler_combined(dev,
                 primary_render_pipeline_set_1s[frame_idx], 2, 0,
                 default_sampler, lambertian_irradiance_map.primary_view);
+            update_descriptor_image_sampler_combined(dev,
+                primary_render_pipeline_set_1s[frame_idx], 3, 0,
+                default_sampler, prefiltered_environment_map.primary_view);
+            update_descriptor_image_sampler_combined(dev,
+                primary_render_pipeline_set_1s[frame_idx], 4, 0,
+                default_sampler, brdf_lut.primary_view);
             // enviroment render set 0
             update_descriptor_image_sampler_combined(dev,
                 environment_render_pipeline_set_0s[frame_idx], 0, 0,
@@ -888,16 +927,19 @@ void cook_torrance_brdf_renderer() {
         lambertian_irradiance_map_pipeline_set_0_layout);
     dev.destroyDescriptorSetLayout(
         prefiltered_environment_map_pipeline_set_0_layout);
+    dev.destroyDescriptorSetLayout(brdf_lut_pipeline_set_0_layout);
     dev.destroyPipelineLayout(environment_render_pipeline_layout);
     dev.destroyPipelineLayout(primary_render_pipeline_layout);
     dev.destroyPipelineLayout(environment_map_generation_pipeline_layout);
     dev.destroyPipelineLayout(lambertian_irradiance_map_pipeline_layout);
     dev.destroyPipelineLayout(prefiltered_environment_map_pipeline_layout);
+    dev.destroyPipelineLayout(brdf_lut_pipeline_layout);
     dev.destroyPipeline(environment_render_pipeline);
     dev.destroyPipeline(primary_render_pipeline);
     dev.destroyPipeline(environment_map_generation_pipeline);
     dev.destroyPipeline(lambertian_irradiance_map_pipeline);
     dev.destroyPipeline(prefiltered_environment_map_pipeline);
+    dev.destroyPipeline(brdf_lut_pipeline);
     dev.destroyCommandPool(graphics_command_pool);
     dev.destroyCommandPool(compute_command_pool);
     for (auto const framebuffer : framebuffers) {
