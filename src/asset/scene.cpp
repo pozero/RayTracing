@@ -1,7 +1,12 @@
 #include "scene.h"
 
 void add_mesh(scene& scene, mesh const& mesh) {
+    uint32_t current_vertex_count = 0;
+    for (auto const& m : scene.meshes) {
+        current_vertex_count += m.vertices.size();
+    }
     scene.meshes.push_back(mesh);
+    scene.mesh_vertex_start.push_back(current_vertex_count);
 }
 
 void add_material(scene& scene, material const& material) {

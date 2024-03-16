@@ -33,7 +33,7 @@ vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device,
 }
 
 vk::PipelineLayout create_pipeline_layout(vk::Device device,
-    std::vector<vk::DescriptorSetLayout> const& descriptor_set_layouts) {
+    std::span<vk::DescriptorSetLayout> const& descriptor_set_layouts) {
     vk::Result result;
     vk::PipelineLayout pipeline_layout;
     vk::PipelineLayoutCreateInfo const pipeline_layout_info{
@@ -47,9 +47,9 @@ vk::PipelineLayout create_pipeline_layout(vk::Device device,
 }
 
 vk::PipelineLayout create_pipeline_layout(vk::Device device,
-    std::vector<uint32_t> const& push_constant_sizes,
-    std::vector<vk::ShaderStageFlagBits> const& push_constant_stages,
-    std::vector<vk::DescriptorSetLayout> const& descriptor_set_layouts) {
+    std::span<uint32_t> const& push_constant_sizes,
+    std::span<vk::ShaderStageFlagBits> const& push_constant_stages,
+    std::span<vk::DescriptorSetLayout> const& descriptor_set_layouts) {
     CHECK(push_constant_sizes.size() == push_constant_stages.size(), "");
     vk::Result result;
     vk::PipelineLayout pipeline_layout;
@@ -104,29 +104,29 @@ vk::DescriptorPool create_descriptor_pool(
     return descriptor_pool;
 }
 
-std::vector<vk::DescriptorSet> create_descriptor_set(vk::Device device,
+void create_descriptor_set(vk::Device device,
     vk::DescriptorPool descriptor_pool,
-    vk::DescriptorSetLayout descriptor_set_layout, uint32_t count,
+    vk::DescriptorSetLayout descriptor_set_layout,
+    std::span<vk::DescriptorSet> const& out_descriptor_sets,
     uint32_t variable_size) {
     vk::Result result;
-    std::vector<vk::DescriptorSet> descriptor_sets{};
+    uint32_t descriptor_set_count = (uint32_t) out_descriptor_sets.size();
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts{
-        count, descriptor_set_layout};
-    std::vector<uint32_t> variable_sizes(count, variable_size);
+        descriptor_set_count, descriptor_set_layout};
+    std::vector<uint32_t> variable_sizes(descriptor_set_count, variable_size);
     vk::DescriptorSetVariableDescriptorCountAllocateInfo const
         variable_count_info{
-            .descriptorSetCount = count,
+            .descriptorSetCount = descriptor_set_count,
             .pDescriptorCounts = variable_sizes.data(),
         };
     vk::DescriptorSetAllocateInfo const allocate_info{
         .pNext = variable_size > 0 ? &variable_count_info : nullptr,
         .descriptorPool = descriptor_pool,
-        .descriptorSetCount = count,
+        .descriptorSetCount = descriptor_set_count,
         .pSetLayouts = descriptor_set_layouts.data(),
     };
-    VK_CHECK_CREATE(
-        result, descriptor_sets, device.allocateDescriptorSets(allocate_info));
-    return descriptor_sets;
+    VK_CHECK(result, device.allocateDescriptorSets(
+                         &allocate_info, out_descriptor_sets.data()));
 }
 
 void update_descriptor(vk::Device device, vk::DescriptorSet descriptor_set,

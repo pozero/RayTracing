@@ -53,7 +53,7 @@ vma_buffer create_buffer(VmaAllocator vma_alloc, uint32_t size,
 }
 
 void destroy_buffer(VmaAllocator vma_alloc, vma_buffer const& buffer) {
-    if (is_dummy(buffer)) {
+    if (is_dummy(buffer) || !buffer.buffer) {
         return;
     }
     vmaDestroyBuffer(vma_alloc, buffer.buffer, buffer.allocation);
@@ -115,6 +115,7 @@ void cleanup_staging_buffer(VmaAllocator vma_alloc) {
     for (auto const staging : staging_buffers) {
         destroy_buffer(vma_alloc, staging);
     }
+    staging_buffers.clear();
 }
 
 void create_dummy_buffer(VmaAllocator vma_alloc) {
@@ -150,4 +151,6 @@ void destroy_dummy_buffer(VmaAllocator vma_alloc) {
         dummy_uniform_buffer.allocation);
     vmaDestroyBuffer(vma_alloc, dummy_storage_buffer.buffer,
         dummy_storage_buffer.allocation);
+    dummy_storage_buffer = {};
+    dummy_uniform_buffer = {};
 }

@@ -1,12 +1,16 @@
 #pragma once
 
-#include "mesh.h"
-#include "material.h"
+#include "asset/mesh.h"
+#include "asset/material.h"
+#include "asset/texture.h"
 
 struct scene {
     std::vector<mesh> meshes;
     std::vector<instance> instances;
     std::vector<material> materials;
+    std::vector<texture_data> textures;
+
+    std::vector<uint32_t> mesh_vertex_start;
 };
 
 void add_mesh(scene& scene, mesh const& mesh);

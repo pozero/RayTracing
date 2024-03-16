@@ -14,19 +14,20 @@ vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device,
     vk::DescriptorSetLayoutCreateFlags flags = {});
 
 vk::PipelineLayout create_pipeline_layout(vk::Device device,
-    std::vector<vk::DescriptorSetLayout> const& descriptor_set_layouts);
+    std::span<vk::DescriptorSetLayout> const& descriptor_set_layouts);
 
 vk::PipelineLayout create_pipeline_layout(vk::Device device,
-    std::vector<uint32_t> const& push_constant_size,
-    std::vector<vk::ShaderStageFlagBits> const& push_constant_stage,
-    std::vector<vk::DescriptorSetLayout> const& descriptor_set_layouts);
+    std::span<uint32_t> const& push_constant_size,
+    std::span<vk::ShaderStageFlagBits> const& push_constant_stage,
+    std::span<vk::DescriptorSetLayout> const& descriptor_set_layouts);
 
 vk::DescriptorPool create_descriptor_pool(
     vk::Device device, vk::DescriptorPoolCreateFlags flags = {});
 
-std::vector<vk::DescriptorSet> create_descriptor_set(vk::Device device,
+void create_descriptor_set(vk::Device device,
     vk::DescriptorPool descriptor_pool,
-    vk::DescriptorSetLayout descriptor_set_layout, uint32_t count,
+    vk::DescriptorSetLayout descriptor_set_layout,
+    std::span<vk::DescriptorSet> const& out_descriptors,
     uint32_t variable_size = 0);
 
 void update_descriptor(vk::Device device, vk::DescriptorSet descriptor_set,

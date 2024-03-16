@@ -8,13 +8,13 @@
 #pragma clang diagnostic pop
 
 struct vma_image {
-    vk::Image image;
-    VmaAllocation allocation;
-    uint32_t width;
-    uint32_t height;
-    vk::Format format;
-    void* mapped;
-    vk::ImageView primary_view;
+    vk::Image image{};
+    VmaAllocation allocation = nullptr;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    vk::Format format = vk::Format::eR8Unorm;
+    void* mapped = nullptr;
+    vk::ImageView primary_view{};
 };
 
 vma_image create_image(VmaAllocator vma_alloc, uint32_t width, uint32_t height,

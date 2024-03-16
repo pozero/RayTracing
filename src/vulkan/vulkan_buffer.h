@@ -8,10 +8,10 @@
 #pragma clang diagnostic pop
 
 struct vma_buffer {
-    vk::Buffer buffer;
-    VmaAllocation allocation;
-    uint8_t* mapped;
-    uint32_t size;
+    vk::Buffer buffer{};
+    VmaAllocation allocation = nullptr;
+    uint8_t* mapped = nullptr;
+    uint32_t size = 0;
 };
 
 vma_buffer create_buffer(VmaAllocator vma_alloc, uint32_t size,

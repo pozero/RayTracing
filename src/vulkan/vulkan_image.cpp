@@ -343,4 +343,5 @@ void cleanup_staging_image(VmaAllocator vma_alloc) {
     for (auto const& staging : staging_images) {
         vmaDestroyImage(vma_alloc, staging.image, staging.allocation);
     }
+    staging_images.clear();
 }
