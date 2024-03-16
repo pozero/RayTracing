@@ -1,19 +1,19 @@
-#define PI 3.1415926535
-
-#define MATERIAL_LAMBERTIAN 0
-#define MATERIAL_METAL 1
-#define MATERIAL_DIELECTRIC 2
-#define MATERIAL_DIFFUSE_LIGHT 3
-
 struct material_t {
-    vec4 albedo;
-    float fuzz;
-    float refraction_index;
-    int albedo_texture;
-    int type;
+    vec3 albedo;
+    float albedo_tex;
+
+    float metallic;
+    float subsurface;
+    float specular;
+    float roughness;
+
+    float specular_tint;
+    float anisotropic;
+    float sheen;
+    float sheen_tint;
+
+    float clearcoat;
+    float clearcoat_gloss;
+    // padding
+    // padding
 };
-
-material_t empty_material() {
-    return material_t(vec4(0.0, 0.0, 0.0, 1.0), 0.0, 0.0, -1, -1);
-}
-

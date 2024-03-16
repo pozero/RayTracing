@@ -1,19 +1,12 @@
-#include "raytracer/raytracer.h"
 #include "renderer/renderer.h"
-
-#define BRUTE_FORCE_RAYTRACER 0
-#define COOK_TORRANCE_BRDF_RENDERER 1
+#include "renderer/render_context.h"
 
 int main() {
-    switch (COOK_TORRANCE_BRDF_RENDERER) {
-        case BRUTE_FORCE_RAYTRACER:
-            brute_force_raytracer();
-            break;
-        case COOK_TORRANCE_BRDF_RENDERER:
-            cook_torrance_brdf_renderer();
-            break;
-        default:
-            break;
-    }
+    renderer renderer{};
+    load_rasterizer(renderer);
+    bool running = true;
+    create_render_context();
+    while (running) {}
+    destroy_render_context();
     return 0;
 }

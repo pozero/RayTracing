@@ -1,7 +1,5 @@
 #version 460
 
-#extension GL_EXT_scalar_block_layout: require
-
 vec3 vertices[36] = vec3[36](
     vec3(-1.0,  1.0, -1.0),
     vec3(-1.0, -1.0, -1.0),

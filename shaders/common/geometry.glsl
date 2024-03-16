@@ -1,21 +1,10 @@
-struct sphere_t {
-    vec3 center;
-    float radius;
-    material_t material;
+struct vertex_t {
+    vec3 position;
+    vec3 normal;
+    vec2 tex_coord;
 };
 
-struct triangel_vertex_t {
-    vec4 position;
-    vec4 normal;
-    vec4 tangent;
-    vec2 albedo_uv;
-    vec2 normal_uv;
-};
-
-struct triangle_t {
-    uint a;
-    uint b;
-    uint c;
-    uint material;
-};
-
+vertex_t unpack_vertex(const in vec4 position_texu,
+                       const in vec4 normal_texv) {
+    return vertex_t(position_texu.xyz, normal_texv.xyz, vec2(position_texu.w, normal_texv.w));
+}

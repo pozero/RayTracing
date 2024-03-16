@@ -2,13 +2,13 @@
 
 #extension GL_EXT_scalar_block_layout: require
 
+#include "../common/utils.glsl"
+
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform sampler2D equirectangular_map;
 
 layout(rgba32f, set = 0, binding = 1) uniform imageCube cubemap;
-
-#define PI 3.1415926535
 
 vec2 cartesian_to_spherical(vec3 v)
 {

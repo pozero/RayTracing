@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <string_view>
-#include <memory>
 
 enum class texture_channel {
     rgb,

@@ -99,6 +99,7 @@ target_include_directories(Raytracing
         ${PROJECT_SOURCE_DIR}/third_party/stb
         ${PROJECT_SOURCE_DIR}/third_party/fmt/include
         ${PROJECT_SOURCE_DIR}/third_party/vma/include
+        ${PROJECT_SOURCE_DIR}/third_party/tinyobj
 )
 
 set(BUILD_SHARED_LIBS OFF)
