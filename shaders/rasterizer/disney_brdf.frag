@@ -17,7 +17,7 @@ layout(std430, set = 1, binding = 0) readonly buffer MATERIAL {
     material_t materials[];
 };
 
-layout(std430, set = 1, binding = 1) uniform sampler2D textures[];
+layout(set = 1, binding = 1) uniform sampler2D textures[];
 
 void main() {
     out_frag = vec4(1.0, 1.0, 1.0, 1.0);

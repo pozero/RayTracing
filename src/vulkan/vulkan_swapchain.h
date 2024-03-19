@@ -15,8 +15,8 @@ void prepare_swapchain(vk::PhysicalDevice physical_dev, vk::SurfaceKHR surface);
 std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>> create_swapchain(
     vk::Device device, vk::SurfaceKHR surface, vulkan_queues const& queues);
 
-std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>, struct vma_image,
-    struct vma_image>
+std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>, struct vk_image,
+    struct vk_image>
     create_swapchain_with_depth_multisampling(vk::Device device,
         VmaAllocator vma_alloc, vk::SurfaceKHR surface,
         vulkan_queues const& queues);

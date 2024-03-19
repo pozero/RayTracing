@@ -6,11 +6,14 @@
 #include "vulkan/vulkan_swapchain.h"
 #include "renderer/render_context.h"
 
+#pragma clang diagnostic ignored "-Wexit-time-destructors"
+#pragma clang diagnostic ignored "-Wglobal-constructors"
+
 static bool initialized = false;
 
 // glfw
-static uint32_t win_width = 1280;
-static uint32_t win_height = 720;
+uint32_t win_width = 1280;
+uint32_t win_height = 720;
 GLFWwindow* window = nullptr;
 
 // vulkan
@@ -23,14 +26,25 @@ vk::Device device{};
 vk::PhysicalDevice physical_device{};
 vulkan_queues command_queues{};
 VmaAllocator vma_alloc = nullptr;
-static vk::CommandPool graphics_command_pool;
-static vk::CommandPool compute_command_pool;
-static uint32_t graphics_command_index = 0;
-static uint32_t compute_command_index = 0;
-static std::array<vk::CommandBuffer, FRAME_IN_FLIGHT> graphics_command_buffers;
-static std::array<vk::CommandBuffer, FRAME_IN_FLIGHT> compute_command_buffers;
-static std::array<vk::Fence, FRAME_IN_FLIGHT> graphics_command_fences;
-static std::array<vk::Fence, FRAME_IN_FLIGHT> compute_command_fences;
+static struct vk_commands {
+    vk::CommandPool pool;
+    uint32_t index = 0;
+    bool new_buffer = true;
+    std::array<vk::CommandBuffer, FRAME_IN_FLIGHT> buffers;
+    std::array<vk::Fence, FRAME_IN_FLIGHT> fences;
+    std::vector<vk::Semaphore> wait_semphores;
+    std::vector<vk::PipelineStageFlags> wait_stages;
+    std::vector<vk::Semaphore> signal_semphores;
+} graphics_commands{}, compute_commands{};
+static std::vector<vk::Semaphore> present_semaphore{};
+
+bool window_should_close() {
+    return glfwWindowShouldClose(window);
+}
+
+void poll_window_event() {
+    glfwPollEvents();
+}
 
 void create_render_context() {
     if (initialized) {
@@ -132,32 +146,35 @@ void create_render_context() {
         .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
         .queueFamilyIndex = command_queues.graphics_queue_idx,
     };
-    VK_CHECK_CREATE(result, graphics_command_pool,
+    VK_CHECK_CREATE(result, graphics_commands.pool,
         device.createCommandPool(command_pool_info));
     command_pool_info.queueFamilyIndex = command_queues.compute_queue_idx;
-    VK_CHECK_CREATE(result, compute_command_pool,
+    VK_CHECK_CREATE(result, compute_commands.pool,
         device.createCommandPool(command_pool_info));
     vk::CommandBufferAllocateInfo command_buffer_allocation_info{
-        .commandPool = graphics_command_pool,
+        .commandPool = graphics_commands.pool,
         .level = vk::CommandBufferLevel::ePrimary,
         .commandBufferCount = FRAME_IN_FLIGHT,
     };
     VK_CHECK(
         result, device.allocateCommandBuffers(&command_buffer_allocation_info,
-                    graphics_command_buffers.data()));
-    command_buffer_allocation_info.commandPool = compute_command_pool;
+                    graphics_commands.buffers.data()));
+    command_buffer_allocation_info.commandPool = compute_commands.pool;
     VK_CHECK(
         result, device.allocateCommandBuffers(&command_buffer_allocation_info,
-                    compute_command_buffers.data()));
+                    compute_commands.buffers.data()));
     vk::FenceCreateInfo const fence_info{
         .flags = vk::FenceCreateFlagBits::eSignaled,
     };
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
+        VK_CHECK_CREATE(result, graphics_commands.fences[i],
+            device.createFence(fence_info));
         VK_CHECK_CREATE(
-            result, graphics_command_fences[i], device.createFence(fence_info));
-        VK_CHECK_CREATE(
-            result, compute_command_fences[i], device.createFence(fence_info));
+            result, compute_commands.fences[i], device.createFence(fence_info));
     }
+    /* SWAPCHAIN PREPARE */
+    prepare_swapchain(physical_device, surface);
+    wait_window(device, physical_device, surface, window);
     initialized = true;
 }
 
@@ -166,11 +183,11 @@ void destroy_render_context() {
         return;
     }
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
-        device.destroyFence(graphics_command_fences[i]);
-        device.destroyFence(compute_command_fences[i]);
+        device.destroyFence(graphics_commands.fences[i]);
+        device.destroyFence(compute_commands.fences[i]);
     }
-    device.destroyCommandPool(graphics_command_pool);
-    device.destroyCommandPool(compute_command_pool);
+    device.destroyCommandPool(graphics_commands.pool);
+    device.destroyCommandPool(compute_commands.pool);
     vmaDestroyAllocator(vma_alloc);
     device.destroy();
     instance.destroySurfaceKHR(surface);
@@ -183,48 +200,89 @@ void destroy_render_context() {
     initialized = false;
 }
 
-vk::CommandBuffer get_command_buffer(vk::PipelineBindPoint bind_point) {
+void wait_vulkan() {
     vk::Result result;
-    vk::CommandBuffer command_buffer;
-    vk::Fence command_fence;
-    if (bind_point == vk::PipelineBindPoint::eGraphics) {
-        command_buffer = graphics_command_buffers[graphics_command_index];
-        command_fence = graphics_command_fences[graphics_command_index];
-    } else {
-        command_buffer = compute_command_buffers[compute_command_index];
-        command_fence = compute_command_fences[compute_command_index];
-    }
-    VK_CHECK(result, device.waitForFences(1, &command_fence, true, 1e9));
-    return command_buffer;
+    VK_CHECK(result, device.waitIdle());
 }
 
-void submit_command_buffer(vk::PipelineBindPoint bind_point,
-    std::vector<vk::Semaphore> const& wait_semphores,
-    std::vector<vk::PipelineStageFlags> const& wait_stages,
-    std::vector<vk::Semaphore> const& signal_semphores) {
+std::pair<vk::CommandBuffer, uint32_t> get_command_buffer(
+    vk::PipelineBindPoint bind_point) {
     vk::Result result;
-    vk::CommandBuffer command_buffer;
-    vk::Fence command_fence;
-    vk::Queue command_queue;
-    if (bind_point == vk::PipelineBindPoint::eGraphics) {
-        command_buffer = graphics_command_buffers[graphics_command_index];
-        command_fence = graphics_command_fences[graphics_command_index];
-        command_queue = command_queues.graphics_queue;
-        graphics_command_index = (graphics_command_index + 1) % FRAME_IN_FLIGHT;
-    } else {
-        command_buffer = compute_command_buffers[compute_command_index];
-        command_fence = compute_command_fences[compute_command_index];
-        command_queue = command_queues.compute_queue;
-        compute_command_index = (compute_command_index + 1) % FRAME_IN_FLIGHT;
+    vk_commands& commands = bind_point == vk::PipelineBindPoint::eGraphics ?
+                                graphics_commands :
+                                compute_commands;
+    vk::CommandBuffer const command_buffer = commands.buffers[commands.index];
+    vk::Fence const command_fence = commands.fences[commands.index];
+    vk::CommandBufferBeginInfo const begin_info{
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+    if (commands.new_buffer) {
+        commands.new_buffer = false;
+        VK_CHECK(result, device.waitForFences(1, &command_fence, true, 1e9));
+        VK_CHECK(result, device.resetFences(1, &command_fence));
+        VK_CHECK(result, command_buffer.reset());
+        VK_CHECK(result, command_buffer.begin(begin_info));
     }
+    return std::make_pair(command_buffer, commands.index);
+}
+
+void add_submit_wait(vk::PipelineBindPoint bind_point, vk::Semaphore semaphore,
+    vk::PipelineStageFlags stage) {
+    vk_commands& commands = bind_point == vk::PipelineBindPoint::eGraphics ?
+                                graphics_commands :
+                                compute_commands;
+    commands.wait_semphores.push_back(semaphore);
+    commands.wait_stages.push_back(stage);
+}
+
+void add_submit_signal(
+    vk::PipelineBindPoint bind_point, vk::Semaphore semaphore) {
+    vk_commands& commands = bind_point == vk::PipelineBindPoint::eGraphics ?
+                                graphics_commands :
+                                compute_commands;
+    commands.signal_semphores.push_back(semaphore);
+}
+
+void submit_command_buffer(vk::PipelineBindPoint bind_point) {
+    vk::Result result;
+    bool const graphics = bind_point == vk::PipelineBindPoint::eGraphics;
+    vk_commands& commands = graphics ? graphics_commands : compute_commands;
+    vk::Queue const command_queue =
+        graphics ? command_queues.graphics_queue : command_queues.compute_queue;
+    vk::CommandBuffer const command_buffer = commands.buffers[commands.index];
+    vk::Fence const command_fence = commands.fences[commands.index];
+    commands.index = (commands.index + 1) % FRAME_IN_FLIGHT;
+    commands.new_buffer = true;
+    VK_CHECK(result, command_buffer.end());
     vk::SubmitInfo const submit_info{
-        .waitSemaphoreCount = (uint32_t) wait_semphores.size(),
-        .pWaitSemaphores = wait_semphores.data(),
-        .pWaitDstStageMask = wait_stages.data(),
+        .waitSemaphoreCount = (uint32_t) commands.wait_semphores.size(),
+        .pWaitSemaphores = commands.wait_semphores.data(),
+        .pWaitDstStageMask = commands.wait_stages.data(),
         .commandBufferCount = 1,
         .pCommandBuffers = &command_buffer,
-        .signalSemaphoreCount = (uint32_t) signal_semphores.size(),
-        .pSignalSemaphores = signal_semphores.data(),
+        .signalSemaphoreCount = (uint32_t) commands.signal_semphores.size(),
+        .pSignalSemaphores = commands.signal_semphores.data(),
     };
     VK_CHECK(result, command_queue.submit(1, &submit_info, command_fence));
+    commands.wait_semphores.clear();
+    commands.wait_stages.clear();
+    commands.signal_semphores.clear();
+}
+
+void add_present_wait(vk::Semaphore semaphore) {
+    present_semaphore.push_back(semaphore);
+}
+
+vk::Result present(
+    vk::SwapchainKHR const& swapchain, uint32_t const& image_idx) {
+    vk::PresentInfoKHR const present_info{
+        .waitSemaphoreCount = (uint32_t) present_semaphore.size(),
+        .pWaitSemaphores = present_semaphore.data(),
+        .swapchainCount = 1,
+        .pSwapchains = &swapchain,
+        .pImageIndices = &image_idx,
+    };
+    vk::Result const result =
+        swapchain_present_wrapper(command_queues.present_queue, present_info);
+    present_semaphore.clear();
+    return result;
 }

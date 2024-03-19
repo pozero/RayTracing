@@ -5,7 +5,7 @@
 #include "asset/texture.h"
 
 struct scene {
-    std::vector<mesh> meshes;
+    std::vector<vertex> vertices;
     std::vector<instance> instances;
     std::vector<material> materials;
     std::vector<texture_data> textures;

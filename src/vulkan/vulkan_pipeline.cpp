@@ -72,7 +72,7 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
         .rasterizerDiscardEnable = vk::False,
         .polygonMode = polygon_mode,
         .cullMode = vk::CullModeFlagBits::eBack,
-        .frontFace = vk::FrontFace::eCounterClockwise,
+        .frontFace = vk::FrontFace::eClockwise,
         .depthBiasEnable = vk::False,
         .lineWidth = 1.0f,
     };

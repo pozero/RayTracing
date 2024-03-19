@@ -6,9 +6,9 @@
 
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
 #pragma clang diagnostic ignored "-Wglobal-constructors"
-static std::vector<vma_image> staging_images{};
+static std::vector<vk_image> staging_images{};
 
-vma_image create_image(VmaAllocator vma_alloc, uint32_t width, uint32_t height,
+vk_image create_image(VmaAllocator vma_alloc, uint32_t width, uint32_t height,
     vk::Format format, std::vector<uint32_t> const& queues,
     vk::ImageCreateFlags flags, vk::ImageType type, vk::ImageUsageFlags usage,
     uint32_t levels, uint32_t layers, vk::ImageTiling tiling,
@@ -44,17 +44,17 @@ vma_image create_image(VmaAllocator vma_alloc, uint32_t width, uint32_t height,
     CHECK(vmaCreateImage(vma_alloc, &image_info, &allocation_info, &image,
               &allocation, nullptr) == VK_SUCCESS,
         "");
-    return vma_image{
-        image, allocation, width, height, (vk::Format) format, nullptr, {}};
+    return vk_image{image, allocation, width, height, levels, layers,
+        (vk::Format) format, nullptr, {}};
 }
 
-vma_image create_texture2d(vk::Device device, VmaAllocator vma_alloc,
+vk_image create_texture2d(vk::Device device, VmaAllocator vma_alloc,
     vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
     uint32_t level, vk::Format format, std::vector<uint32_t> const& queues,
     vk::ImageUsageFlags usage) {
     vk::Result result;
     vk::ImageView view;
-    vma_image image = create_image(vma_alloc, width, height, format, queues,
+    vk_image image = create_image(vma_alloc, width, height, format, queues,
         vk::ImageCreateFlags{}, vk::ImageType::e2D,
         vk::ImageUsageFlagBits::eSampled | usage, level, 1,
         vk::ImageTiling::eOptimal, vk::ImageLayout::eUndefined,
@@ -104,12 +104,12 @@ vma_image create_texture2d(vk::Device device, VmaAllocator vma_alloc,
     return image;
 }
 
-vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
+vk_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
     vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
     uint32_t level, vk::Format format, std::vector<uint32_t> const& queues) {
     vk::Result result;
     vk::ImageView view;
-    vma_image image = create_image(vma_alloc, width, height, format, queues,
+    vk_image image = create_image(vma_alloc, width, height, format, queues,
         vk::ImageCreateFlagBits::eCubeCompatible, vk::ImageType::e2D,
         vk::ImageUsageFlagBits::eSampled |
             vk::ImageUsageFlagBits::eTransferDst |
@@ -156,7 +156,7 @@ vma_image create_cubemap(vk::Device device, VmaAllocator vma_alloc,
     return image;
 }
 
-vma_image create_host_image(VmaAllocator vma_alloc,
+vk_image create_host_image(VmaAllocator vma_alloc,
     vk::CommandBuffer command_buffer, uint32_t width, uint32_t height,
     vk::Format format) {
     VkImage handle;
@@ -183,7 +183,7 @@ vma_image create_host_image(VmaAllocator vma_alloc,
     CHECK(vmaCreateImage(vma_alloc, &image_info, &allocation_create_info,
               &handle, &allocation, &allocation_ret) == VK_SUCCESS,
         "");
-    vma_image ret{handle, allocation, width, height, format,
+    vk_image ret{handle, allocation, width, height, 1, 1, format,
         allocation_ret.pMappedData, {}};
     vk::ImageMemoryBarrier const image_barrier{
         .srcAccessMask = vk::AccessFlagBits::eNone,
@@ -209,7 +209,7 @@ vma_image create_host_image(VmaAllocator vma_alloc,
 }
 
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
-void update_host_image(VmaAllocator vma_alloc, vma_image const& image,
+void update_host_image(VmaAllocator vma_alloc, vk_image const& image,
     texture_data const& texture_data) {
     if (image.format == vk::Format::eR8G8B8A8Unorm) {
         using image_data_format = uint8_t;
@@ -254,9 +254,9 @@ void update_host_image(VmaAllocator vma_alloc, vma_image const& image,
     vmaFlushAllocation(vma_alloc, image.allocation, 0, VK_WHOLE_SIZE);
 }
 
-void update_texture2d(VmaAllocator vma_alloc, vma_image const& image,
+void update_texture2d(VmaAllocator vma_alloc, vk_image const& image,
     vk::CommandBuffer command_buffer, texture_data const& texture_data) {
-    vma_image staging;
+    vk_image staging;
     vk::ImageSubresourceLayers const whole_layer{
         .aspectMask = vk::ImageAspectFlagBits::eColor,
         .mipLevel = 0,
@@ -330,7 +330,7 @@ vk::Sampler create_default_sampler(vk::Device device) {
 }
 
 void destroy_image(
-    vk::Device device, VmaAllocator vma_alloc, vma_image const& image) {
+    vk::Device device, VmaAllocator vma_alloc, vk_image const& image) {
     if (image.image && image.allocation) {
         vmaDestroyImage(vma_alloc, image.image, image.allocation);
     }

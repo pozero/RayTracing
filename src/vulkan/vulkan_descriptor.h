@@ -45,8 +45,8 @@ void update_descriptor_storage_image(vk::Device device,
 
 void update_descriptor_storage_buffer_whole(vk::Device device,
     vk::DescriptorSet descriptor_set, uint32_t binding, uint32_t array_idx,
-    struct vma_buffer const& buffer);
+    struct vk_buffer const& buffer);
 
 void update_descriptor_uniform_buffer_whole(vk::Device device,
     vk::DescriptorSet descriptor_set, uint32_t binding, uint32_t array_idx,
-    struct vma_buffer const& buffer);
+    struct vk_buffer const& buffer);

@@ -9,19 +9,36 @@
 
 #define VK_DBG 1
 
+bool window_should_close();
+
+void poll_window_event();
+
 void create_render_context();
 
 void destroy_render_context();
 
-vk::CommandBuffer get_command_buffer(vk::PipelineBindPoint bind_point);
+void wait_vulkan();
 
-void submit_command_buffer(vk::PipelineBindPoint bind_point,
-    std::vector<vk::Semaphore> const& wait_semphores,
-    std::vector<vk::PipelineStageFlags> const& wait_stages,
-    std::vector<vk::Semaphore> const& signal_semphores);
+std::pair<vk::CommandBuffer, uint32_t> get_command_buffer(
+    vk::PipelineBindPoint bind_point);
+
+void add_submit_wait(vk::PipelineBindPoint bind_point, vk::Semaphore semaphore,
+    vk::PipelineStageFlags stage);
+
+void add_submit_signal(
+    vk::PipelineBindPoint bind_point, vk::Semaphore semaphore);
+
+void submit_command_buffer(vk::PipelineBindPoint bind_point);
+
+void add_present_wait(vk::Semaphore semaphore);
+
+vk::Result present(
+    vk::SwapchainKHR const& swapchain, uint32_t const& image_idx);
 
 uint32_t constexpr FRAME_IN_FLIGHT = 3;
 
+extern uint32_t win_width;
+extern uint32_t win_height;
 extern struct GLFWwindow* window;
 extern vk::SurfaceKHR surface;
 extern vk::Device device;

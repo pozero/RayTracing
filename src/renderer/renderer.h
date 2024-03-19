@@ -5,10 +5,11 @@ struct renderer {
 
     void (*prepare_data)(struct scene const& scene) = nullptr;
 
-    void (*update_data)(
-        struct camera const& camera, struct scene const& scene) = nullptr;
+    void (*update_data)(struct scene const& scene) = nullptr;
 
-    void (*render)() = nullptr;
+    void (*render)(struct camera const& camera) = nullptr;
+
+    void (*present)() = nullptr;
 
     void (*destroy)() = nullptr;
 };

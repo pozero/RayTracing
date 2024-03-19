@@ -6,16 +6,16 @@
 
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
 #pragma clang diagnostic ignored "-Wglobal-constructors"
-static std::vector<vma_buffer> staging_buffers{};
-static vma_buffer dummy_uniform_buffer{};
-static vma_buffer dummy_storage_buffer{};
+static std::vector<vk_buffer> staging_buffers{};
+static vk_buffer dummy_uniform_buffer{};
+static vk_buffer dummy_storage_buffer{};
 
-static bool is_dummy(vma_buffer const& buffer) {
+static bool is_dummy(vk_buffer const& buffer) {
     return buffer.buffer == dummy_uniform_buffer.buffer ||
            buffer.buffer == dummy_storage_buffer.buffer;
 }
 
-vma_buffer create_buffer(VmaAllocator vma_alloc, uint32_t size,
+vk_buffer create_buffer(VmaAllocator vma_alloc, uint32_t size,
     std::vector<uint32_t> const& queues, VkBufferCreateFlags buffer_flags,
     VkBufferUsageFlags usage_flag, VmaAllocationCreateFlags alloc_flags) {
     // dummy buffer
@@ -48,25 +48,25 @@ vma_buffer create_buffer(VmaAllocator vma_alloc, uint32_t size,
     CHECK(vmaCreateBuffer(vma_alloc, &buffer_info, &allocation_info, &buffer,
               &alloc, &allocation_result) == VK_SUCCESS,
         "");
-    return vma_buffer{
+    return vk_buffer{
         buffer, alloc, (uint8_t*) allocation_result.pMappedData, size};
 }
 
-void destroy_buffer(VmaAllocator vma_alloc, vma_buffer const& buffer) {
+void destroy_buffer(VmaAllocator vma_alloc, vk_buffer const& buffer) {
     if (is_dummy(buffer) || !buffer.buffer) {
         return;
     }
     vmaDestroyBuffer(vma_alloc, buffer.buffer, buffer.allocation);
 }
 
-vma_buffer create_gpu_only_buffer(VmaAllocator vma_alloc, uint32_t size,
+vk_buffer create_gpu_only_buffer(VmaAllocator vma_alloc, uint32_t size,
     std::vector<uint32_t> const& queues, vk::BufferUsageFlags usage) {
     return create_buffer(vma_alloc, size, queues, 0,
         (VkBufferUsageFlags) (usage | vk::BufferUsageFlagBits::eTransferDst),
         VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 }
 
-vma_buffer create_staging_buffer(VmaAllocator vma_alloc, uint32_t size,
+vk_buffer create_staging_buffer(VmaAllocator vma_alloc, uint32_t size,
     std::vector<uint32_t> const& queues) {
     return create_buffer(vma_alloc, size, queues, 0,
         (VkBufferUsageFlags) (vk::BufferUsageFlagBits::eTransferSrc),
@@ -74,7 +74,7 @@ vma_buffer create_staging_buffer(VmaAllocator vma_alloc, uint32_t size,
             VMA_ALLOCATION_CREATE_MAPPED_BIT);
 }
 
-vma_buffer create_frequent_readwrite_buffer(VmaAllocator vma_alloc,
+vk_buffer create_frequent_readwrite_buffer(VmaAllocator vma_alloc,
     uint32_t size, std::vector<uint32_t> const& queues,
     vk::BufferUsageFlags usage) {
     return create_buffer(vma_alloc, size, queues, 0,
@@ -87,7 +87,7 @@ vma_buffer create_frequent_readwrite_buffer(VmaAllocator vma_alloc,
 
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 void update_buffer(VmaAllocator vma_alloc, vk::CommandBuffer command_buffer,
-    vma_buffer const& buffer, std::span<const uint8_t> data, uint32_t offset) {
+    vk_buffer const& buffer, std::span<const uint8_t> data, uint32_t offset) {
     if (is_dummy(buffer)) {
         return;
     }
@@ -96,7 +96,7 @@ void update_buffer(VmaAllocator vma_alloc, vk::CommandBuffer command_buffer,
         vmaFlushAllocation(
             vma_alloc, buffer.allocation, offset, (uint32_t) data.size());
     } else {
-        vma_buffer staging = create_staging_buffer(
+        vk_buffer staging = create_staging_buffer(
             vma_alloc, (uint32_t) data.size(), {vk::QueueFamilyIgnored});
         staging_buffers.push_back(staging);
         std::copy(data.begin(), data.end(), staging.mapped);
@@ -139,11 +139,11 @@ void create_dummy_buffer(VmaAllocator vma_alloc) {
               &alloc, &allocation_result) == VK_SUCCESS,
         "");
     buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    dummy_uniform_buffer = vma_buffer{buffer, alloc, nullptr, 1};
+    dummy_uniform_buffer = vk_buffer{buffer, alloc, nullptr, 1};
     CHECK(vmaCreateBuffer(vma_alloc, &buffer_info, &allocation_info, &buffer,
               &alloc, &allocation_result) == VK_SUCCESS,
         "");
-    dummy_storage_buffer = vma_buffer{buffer, alloc, nullptr, 1};
+    dummy_storage_buffer = vk_buffer{buffer, alloc, nullptr, 1};
 }
 
 void destroy_dummy_buffer(VmaAllocator vma_alloc) {

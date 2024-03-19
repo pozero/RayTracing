@@ -26,7 +26,7 @@ layout(std430, set = 0, binding = 3) readonly buffer INSTANCE_MATERIAL_INDEX {
 };
 
 layout(std430, push_constant) uniform PUSH_CONSTANTS {
-    mat proj_view_mat;
+    mat4 proj_view_mat;
 };
 
 void main() {

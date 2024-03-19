@@ -114,7 +114,7 @@ std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>> create_swapchain(
     return std::make_tuple(swapchain, swapchain_image_views);
 }
 
-std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>, vma_image, vma_image>
+std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>, vk_image, vk_image>
     create_swapchain_with_depth_multisampling(vk::Device device,
         VmaAllocator vma_alloc, vk::SurfaceKHR surface,
         vulkan_queues const& queues) {
@@ -171,7 +171,7 @@ std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>, vma_image, vma_image>
         VK_CHECK_CREATE(
             result, depth_view, device.createImageView(depth_view_info));
     }
-    vma_image const depth_buffer{
+    vk_image const depth_buffer{
         .image = depth,
         .allocation = depth_allocation,
         .width = surface_capabilities.currentExtent.width,
@@ -227,7 +227,7 @@ std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>, vma_image, vma_image>
         VK_CHECK_CREATE(
             result, color_view, device.createImageView(color_view_info));
     }
-    vma_image const color_buffer{
+    vk_image const color_buffer{
         .image = color,
         .allocation = color_allocation,
         .width = surface_capabilities.currentExtent.width,
