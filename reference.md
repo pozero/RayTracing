@@ -4,6 +4,8 @@
 
 -   [wdas/brdf](https://github.com/wdas/brdf)
 
+-   [filament](https://google.github.io/filament/Filament.html)
+
 -   [Physically Based Shading at Disney](https://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdf)
 
 -   [Extending the Disney BRDF to a BSDF with Integrated Subsurface Scattering](https://blog.selfshadow.com/publications/s2015-shading-course/burley/s2015_pbs_disney_bsdf_notes.pdf)

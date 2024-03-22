@@ -7,7 +7,7 @@
 
 struct material {
     glm::vec3 albedo{0.82f, 0.67f, 0.16f};
-    float albedo_tex = 0.0f;
+    float albedo_tex = -1.0f;  // default to white texture
 
     float metallic = 0.0f;
     float subsurface = 0.0f;
