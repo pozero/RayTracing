@@ -1,15 +1,15 @@
 #pragma once
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Weverything"
+#include "glm/vec3.hpp"
+#pragma clang diagnostic pop
+
 #include <cstdint>
 
-enum sky_light_type : int32_t {
-    uniform = 0,
-    textured
-};
-
 struct sky_light {
-    float intensity;
-    sky_light_type type;
+    glm::vec3 intensity;
+    int32_t environment_tex = -1;
 };
 
 enum light_type : int32_t {
@@ -18,6 +18,11 @@ enum light_type : int32_t {
 };
 
 struct light {
-    float intensity;
+    glm::vec3 intensity;
+    int32_t emission_tex = -1;
+
+    glm::vec3 direction;
+    int32_t mesh = -1;
+
     light_type type;
 };

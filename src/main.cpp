@@ -8,7 +8,7 @@
 int main() {
     camera camera = create_camera(glm::vec3{0.0f, 0.0f, 5.0f},
         glm::vec3{0.0f, 0.0f, 0.0f}, 45.0f, win_width, win_height);
-    scene const test_scene = brdf_parameter_test();
+    scene const test_scene = bsdf_parameter_test();
     renderer renderer{};
     load_rasterizer(renderer);
     create_render_context();

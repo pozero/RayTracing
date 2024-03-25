@@ -90,3 +90,16 @@ $$
 \end{align}
 $$
 
+### Uniformly Sampling a Triangle
+
+$$
+(\xi_1 - \delta,
+\xi_2 - \delta,
+1 - (\xi_1 - \delta) - (\xi_2 - \delta))\text{, where }
+\delta = 
+\begin{cases}
+\xi_1 / 2,&\xi_1 < \xi_2,\\
+\xi_2 / 2,&\text{otherwise},\\
+\end{cases}
+$$
+

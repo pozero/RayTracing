@@ -8,7 +8,7 @@
 #pragma clang diagnostic pop
 
 #include <vector>
-#include <string>
+#include <string_view>
 
 struct vertex {
     glm::vec4 position_texu;
@@ -22,8 +22,11 @@ struct mesh {
 struct instance {
     glm::mat4 transformation{1.0f};
     uint32_t mesh = std::numeric_limits<uint32_t>::max();
+    // primitive descriptor
     uint32_t material = std::numeric_limits<uint32_t>::max();
     uint32_t medium = std::numeric_limits<uint32_t>::max();
+    // light descriptor
+    uint32_t light = std::numeric_limits<uint32_t>::max();
 };
 
 mesh load_mesh(std::string_view file_path);
