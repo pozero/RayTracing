@@ -8,6 +8,7 @@ struct scene {
     std::vector<vertex> vertices;
     std::vector<instance> instances;
     std::vector<material> materials;
+    std::vector<medium> mediums;
     std::vector<texture_data> textures;
 
     std::vector<uint32_t> mesh_vertex_start;

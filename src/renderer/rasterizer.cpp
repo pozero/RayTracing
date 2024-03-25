@@ -41,7 +41,6 @@ static vk::DescriptorPool primary_descriptor_pool{};
 static vk::Sampler primary_sampler{};
 static std::array<vk::Semaphore, FRAME_IN_FLIGHT> graphics_semaphores{};
 static std::array<vk::Semaphore, FRAME_IN_FLIGHT> present_semaphores{};
-static vk_image white_texture{};
 
 static struct {
     vk::SwapchainKHR swapchain;
@@ -72,6 +71,7 @@ static struct {
     vk_buffer instance_material_index_buffer;
     // set 1 resources
     vk_buffer material_buffer;
+    vk_buffer medium_buffer;
     std::vector<vk_image> texture_array;
 } disney_brdf{};
 
@@ -156,7 +156,8 @@ static void create_disney_brdf_pipeline() {
                                                single_storage_buffer_binding, single_storage_buffer_binding,
                                                },
         std::vector<vk_descriptor_set_binding>{
-                                               single_storage_buffer_binding, texture_array_binding},
+                                               single_storage_buffer_binding, single_storage_buffer_binding,
+                                               texture_array_binding, },
     };
     for (uint32_t i = 0; i < DISNEY_BRDF_SET; ++i) {
         disney_brdf.descriptor_layouts[i] = create_descriptor_set_layout(device,
@@ -177,7 +178,7 @@ static void create_disney_brdf_pipeline() {
         PATH_FROM_BINARY("shaders/disney_brdf.vert.spv"),
         PATH_FROM_BINARY("shaders/disney_brdf.frag.spv"),
         disney_brdf.pipeline_layout, frame_objects.render_pass, {},
-        vk::PolygonMode::eFill, true);
+        vk::PolygonMode::eLine, true);
 }
 
 static void destroy_disney_brdf_pipeline() {
@@ -195,12 +196,10 @@ static void prepare_disney_brdf_resources(scene const& scene) {
     std::vector<glm::mat3> normal_transformations{};
     std::vector<uint32_t> material_indices{};
     std::vector<uint32_t> mesh_vertex_count{};
-    std::vector<material> materials{};
     indirect_draw_command.reserve(scene.instances.size());
     transformations.reserve(scene.instances.size());
     normal_transformations.reserve(scene.instances.size());
     material_indices.reserve(scene.instances.size());
-    materials.reserve(scene.materials.size());
     for (uint32_t s = 1; s < scene.instances.size(); ++s) {
         mesh_vertex_count.push_back(
             scene.mesh_vertex_start[s] - scene.mesh_vertex_start[s - 1]);
@@ -221,12 +220,6 @@ static void prepare_disney_brdf_resources(scene const& scene) {
             glm::transpose(glm::inverse(glm::mat3{inst.transformation})));
         material_indices.push_back(inst.material);
     }
-    // dummy texture
-    for (uint32_t m = 0; m < scene.materials.size(); ++m) {
-        material material = scene.materials[m];
-        material.albedo_tex += 1.0f;
-        materials.push_back(material);
-    }
     mesh_instance_count = (uint32_t) indirect_draw_command.size();
     auto const [command_buffer, sync_idx] =
         get_command_buffer(vk::PipelineBindPoint::eGraphics);
@@ -245,11 +238,13 @@ static void prepare_disney_brdf_resources(scene const& scene) {
     disney_brdf.instance_material_index_buffer =
         create_gpu_only_buffer(vma_alloc, size_in_byte(material_indices), {},
             vk::BufferUsageFlagBits::eStorageBuffer);
-    disney_brdf.material_buffer = create_gpu_only_buffer(vma_alloc,
-        size_in_byte(materials), {}, vk::BufferUsageFlagBits::eStorageBuffer);
-    // dummy texture
-    disney_brdf.texture_array.reserve(scene.textures.size() + 1);
-    disney_brdf.texture_array.push_back(white_texture);
+    disney_brdf.material_buffer =
+        create_gpu_only_buffer(vma_alloc, size_in_byte(scene.materials), {},
+            vk::BufferUsageFlagBits::eStorageBuffer);
+    disney_brdf.medium_buffer =
+        create_gpu_only_buffer(vma_alloc, size_in_byte(scene.mediums), {},
+            vk::BufferUsageFlagBits::eStorageBuffer);
+    disney_brdf.texture_array.reserve(scene.textures.size());
     for (uint32_t t = 1; t <= scene.textures.size(); ++t) {
         texture_data const& data = scene.textures[t - 1];
         vk::Format const format = data.format == texture_format::unorm ?
@@ -273,11 +268,12 @@ static void prepare_disney_brdf_resources(scene const& scene) {
         disney_brdf.instance_material_index_buffer,
         to_byte_span(material_indices), 0);
     update_buffer(vma_alloc, command_buffer, disney_brdf.material_buffer,
-        to_byte_span(materials), 0);
-    // dummy texture
-    for (uint32_t t = 1; t <= disney_brdf.texture_array.size(); ++t) {
+        to_byte_span(scene.materials), 0);
+    update_buffer(vma_alloc, command_buffer, disney_brdf.medium_buffer,
+        to_byte_span(scene.mediums), 0);
+    for (uint32_t t = 0; t < disney_brdf.texture_array.size(); ++t) {
         update_texture2d(vma_alloc, disney_brdf.texture_array[t],
-            command_buffer, scene.textures[t - 1]);
+            command_buffer, scene.textures[t]);
     }
     // draw indirect barrier
     vk::BufferMemoryBarrier const indirect_buffer_upload_barrier{
@@ -312,7 +308,7 @@ static void prepare_disney_brdf_resources(scene const& scene) {
         (uint32_t) vertex_buffer_upload_barriers.size(),
         vertex_buffer_upload_barriers.data(), 0, nullptr);
     // fragment barrier
-    vk::BufferMemoryBarrier const fragment_buffer_barrier{
+    vk::BufferMemoryBarrier const fragment_material_buffer_barrier{
         .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
         .dstAccessMask = vk::AccessFlagBits::eShaderRead,
         .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
@@ -321,6 +317,17 @@ static void prepare_disney_brdf_resources(scene const& scene) {
         .offset = 0,
         .size = vk::WholeSize,
     };
+    vk::BufferMemoryBarrier const fragment_medium_buffer_barrier{
+        .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+        .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .buffer = disney_brdf.medium_buffer.buffer,
+        .offset = 0,
+        .size = vk::WholeSize,
+    };
+    std::array const fragment_buffer_barriers{
+        fragment_material_buffer_barrier, fragment_medium_buffer_barrier};
     std::vector<vk::ImageMemoryBarrier> fragment_image_barriers{};
     for (uint32_t t = 0; t < disney_brdf.texture_array.size(); ++t) {
         fragment_image_barriers.push_back(vk::ImageMemoryBarrier{
@@ -340,8 +347,10 @@ static void prepare_disney_brdf_resources(scene const& scene) {
         });
     }
     command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-        vk::PipelineStageFlagBits::eFragmentShader, {}, 0, nullptr, 1,
-        &fragment_buffer_barrier, (uint32_t) fragment_image_barriers.size(),
+        vk::PipelineStageFlagBits::eFragmentShader, {}, 0, nullptr,
+        (uint32_t) fragment_buffer_barriers.size(),
+        fragment_buffer_barriers.data(),
+        (uint32_t) fragment_image_barriers.size(),
         fragment_image_barriers.data());
     for (uint32_t f = 0; f < FRAME_IN_FLIGHT; ++f) {
         // set 0
@@ -361,9 +370,11 @@ static void prepare_disney_brdf_resources(scene const& scene) {
         update_descriptor_storage_buffer_whole(device,
             disney_brdf.descriptor_sets[1][f], 0, 0,
             disney_brdf.material_buffer);
+        update_descriptor_storage_buffer_whole(device,
+            disney_brdf.descriptor_sets[1][f], 1, 0, disney_brdf.medium_buffer);
         for (uint32_t t = 0; t < disney_brdf.texture_array.size(); ++t) {
             update_descriptor_image_sampler_combined(device,
-                disney_brdf.descriptor_sets[1][f], 1, t, primary_sampler,
+                disney_brdf.descriptor_sets[1][f], 2, t, primary_sampler,
                 disney_brdf.texture_array[t].primary_view);
         }
     }
@@ -376,8 +387,8 @@ static void clean_disney_brdf_resources() {
     destroy_buffer(vma_alloc, disney_brdf.normal_transformation_buffer);
     destroy_buffer(vma_alloc, disney_brdf.instance_material_index_buffer);
     destroy_buffer(vma_alloc, disney_brdf.material_buffer);
-    // dummy texture
-    for (uint32_t i = 1; i < disney_brdf.texture_array.size(); ++i) {
+    destroy_buffer(vma_alloc, disney_brdf.medium_buffer);
+    for (uint32_t i = 0; i < disney_brdf.texture_array.size(); ++i) {
         destroy_image(device, vma_alloc, disney_brdf.texture_array[i]);
     }
     disney_brdf.texture_array.clear();
@@ -408,36 +419,6 @@ void rasterizer_initialize() {
         VK_CHECK_CREATE(result, present_semaphores[f],
             device.createSemaphore(semaphore_info));
     }
-    auto const [command_buffer, sync_idx] =
-        get_command_buffer(vk::PipelineBindPoint ::eGraphics);
-    white_texture = create_texture2d(device, vma_alloc, command_buffer, 512,
-        512, 1, vk::Format::eR8G8B8A8Unorm,
-        {command_queues.compute_queue_idx, command_queues.graphics_queue_idx},
-        vk::ImageUsageFlagBits::eSampled |
-            vk::ImageUsageFlagBits::eTransferDst);
-    std::array constexpr WHITE{1.0f, 1.0f, 1.0f, 1.0f};
-    vk::ClearColorValue const white_clear_value{.float32 = WHITE};
-    vk::ImageSubresourceRange const whole_range{
-        .aspectMask = vk::ImageAspectFlagBits::eColor,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1};
-    command_buffer.clearColorImage(white_texture.image,
-        vk::ImageLayout::eGeneral, &white_clear_value, 1, &whole_range);
-    vk::ImageMemoryBarrier const white_texture_barrier{
-        .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-        .dstAccessMask = vk::AccessFlagBits::eShaderRead,
-        .oldLayout = vk::ImageLayout::eGeneral,
-        .newLayout = vk::ImageLayout::eGeneral,
-        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .image = white_texture.image,
-        .subresourceRange = whole_range};
-    command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-        vk::PipelineStageFlagBits::eVertexShader |
-            vk::PipelineStageFlagBits::eFragmentShader,
-        {}, 0, nullptr, 0, nullptr, 1, &white_texture_barrier);
     create_frame_objects();
     create_disney_brdf_pipeline();
 }
@@ -544,7 +525,6 @@ void rasterizer_destroy() {
         device.destroySemaphore(graphics_semaphores[f]);
         device.destroySemaphore(present_semaphores[f]);
     }
-    destroy_image(device, vma_alloc, white_texture);
     cleanup_staging_buffer(vma_alloc);
     cleanup_staging_image(vma_alloc);
     clean_disney_brdf_resources();

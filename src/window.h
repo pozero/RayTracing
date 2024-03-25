@@ -14,6 +14,7 @@ inline GLFWwindow* glfw_create_window(int width, int height) {
     glfwInit();
     glfwSetErrorCallback(glfw_error_callback);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
     GLFWwindow* window =
         glfwCreateWindow(width, height, "RayTracing", nullptr, nullptr);
     return window;

@@ -9,10 +9,10 @@
 #pragma clang diagnostic pop
 
 struct glsl_raytracer_camera {
-    alignas(sizeof(glm::vec4)) glm::vec3 pixel_delta_u;
-    alignas(sizeof(glm::vec4)) glm::vec3 pixel_delta_v;
-    alignas(sizeof(glm::vec4)) glm::vec3 upper_left_pixel;
-    alignas(sizeof(glm::vec4)) glm::vec3 camera_position;
+    glm::vec3 pixel_delta_u;
+    glm::vec3 pixel_delta_v;
+    glm::vec3 upper_left_pixel;
+    glm::vec3 camera_position;
     float accumulated_scalar;
 };
 

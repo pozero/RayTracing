@@ -4,6 +4,7 @@
 #include "window.h"
 #include "vulkan/vulkan_device.h"
 #include "vulkan/vulkan_swapchain.h"
+#include "vulkan/vulkan_buffer.h"
 #include "renderer/render_context.h"
 
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
@@ -176,12 +177,15 @@ void create_render_context() {
     prepare_swapchain(physical_device, surface);
     wait_window(device, physical_device, surface, window);
     initialized = true;
+    /* CREATE DUMMY BUFFER */
+    create_dummy_buffer(vma_alloc);
 }
 
 void destroy_render_context() {
     if (!initialized) {
         return;
     }
+    destroy_dummy_buffer(vma_alloc);
     for (uint32_t i = 0; i < FRAME_IN_FLIGHT; ++i) {
         device.destroyFence(graphics_commands.fences[i]);
         device.destroyFence(compute_commands.fences[i]);

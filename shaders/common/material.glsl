@@ -1,10 +1,13 @@
 struct material_t {
     vec3 albedo;
-    float albedo_tex;
+    int albedo_tex;
+
+    vec3 emission;
+    int emission_tex;
 
     float metallic;
     float subsurface;
-    float specular;
+    float ior;
     float roughness;
 
     float specular_tint;
@@ -14,6 +17,17 @@ struct material_t {
 
     float clearcoat;
     float clearcoat_gloss;
-    // padding
-    // padding
+    int normal_tex;
+    int metallic_roughness_tex;
+};
+
+#define MEDIUM_ABSORPTION   0
+#define MEDIUM_EMISSION     1
+#define MEDIUM_SCATTERING   2
+
+struct medium_t {
+    vec3 color;
+    float density;
+    float anisotropic;
+    int type;
 };

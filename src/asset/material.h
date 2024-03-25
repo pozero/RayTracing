@@ -7,11 +7,14 @@
 
 struct material {
     glm::vec3 albedo{0.82f, 0.67f, 0.16f};
-    float albedo_tex = -1.0f;  // default to white texture
+    int32_t albedo_tex = -1;
+
+    glm::vec3 emission{0.0f, 0.0f, 0.0f};
+    int32_t emission_tex = -1;
 
     float metallic = 0.0f;
     float subsurface = 0.0f;
-    float specular = 0.5f;
+    float ior = 1.5f;
     float roughness = 0.5f;
 
     float specular_tint = 0.0f;
@@ -21,5 +24,19 @@ struct material {
 
     float clearcoat = 0.0f;
     float clearcoat_gloss = 1.0f;
-    float _p0[2]{};
+    int32_t normal_tex = -1;
+    int32_t metallic_roughness_tex = -1;
+};
+
+enum class medium_type : int32_t {
+    absorption = 0,
+    emission,
+    scattering
+};
+
+struct medium {
+    glm::vec3 color{};
+    float density;
+    float anisotropic;
+    medium_type type;
 };
