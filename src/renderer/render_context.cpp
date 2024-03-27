@@ -101,11 +101,12 @@ void create_render_context() {
         };
     vk::PhysicalDeviceSynchronization2Features const synchron2_feature{
         .pNext = (void*) &descriptor_indexing_features,
-        .synchronization2 = VK_TRUE,
+        .synchronization2 = vk::True,
     };
     dev_creation_pnext = &synchron2_feature;
     vk::PhysicalDeviceFeatures const physical_device_deature{
         .sampleRateShading = vk::True,
+        .multiDrawIndirect = vk::True,
         .fillModeNonSolid = vk::True,
     };
     std::tie(device, physical_device, command_queues) =

@@ -151,16 +151,19 @@ static void create_rasterization_pipeline() {
         vk::DescriptorType::eCombinedImageSampler, texture_array_size,
         texture_array_binding_flags};
     std::array const bindings = {
-        std::vector<vk_descriptor_set_binding>{
-                                               single_storage_buffer_binding, single_storage_buffer_binding,
-                                               single_storage_buffer_binding, },
+        std::vector<vk_descriptor_set_binding>{single_storage_buffer_binding,
+                                               single_storage_buffer_binding, single_storage_buffer_binding},
         std::vector<vk_descriptor_set_binding>{
                                                single_storage_buffer_binding, single_storage_buffer_binding,
                                                texture_array_binding, },
     };
+    std::array const set_shader_stage{
+        vk::ShaderStageFlagBits::eVertex,
+        vk::ShaderStageFlagBits::eFragment,
+    };
     for (uint32_t i = 0; i < RASTERIZATION_SET; ++i) {
         rasterization.descriptor_layouts[i] = create_descriptor_set_layout(
-            device, vk::ShaderStageFlagBits::eVertex, bindings[i],
+            device, set_shader_stage[i], bindings[i],
             vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool);
         create_descriptor_set(device, primary_descriptor_pool,
             rasterization.descriptor_layouts[i],
@@ -224,7 +227,6 @@ static void prepare_rasterization_resources(scene const& scene) {
             .light = -1,
         });
     }
-    mesh_instance_count = (uint32_t) scene.primitives.size();
     for (uint32_t l = 0, i = (uint32_t) instances.size();
          l < scene.lights.size(); ++l) {
         light const& light = scene.lights[l];
@@ -244,8 +246,8 @@ static void prepare_rasterization_resources(scene const& scene) {
             .light = (int32_t) l,
         });
         ++i;
-        ++mesh_instance_count;
     }
+    mesh_instance_count = (uint32_t) indirect_draw_command.size();
     auto const [command_buffer, sync_idx] =
         get_command_buffer(vk::PipelineBindPoint::eGraphics);
     rasterization.indirect_draw_buffer =

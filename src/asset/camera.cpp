@@ -83,7 +83,7 @@ glsl_raytracer_camera get_glsl_raytracer_camera(
 }
 
 inline glm::mat4 get_glsl_render_camera_view(camera const& camera) {
-    return glm::lookAt(camera.position, camera.position - camera.w, -camera.v);
+    return glm::lookAt(camera.position, camera.position - camera.w, camera.v);
 }
 
 inline glm::mat4 get_glsl_render_camera_proj(
