@@ -181,7 +181,7 @@ static void create_rasterization_pipeline() {
         PATH_FROM_BINARY("shaders/rasterize.vert.spv"),
         PATH_FROM_BINARY("shaders/rasterize.frag.spv"),
         rasterization.pipeline_layout, frame_objects.render_pass, {},
-        vk::PolygonMode::eLine, true);
+        vk::PolygonMode::eFill, true);
 }
 
 static void destroy_rasterization_pipeline() {
@@ -469,7 +469,7 @@ void rasterizer_render(camera const& camera) {
         .extent = swapchain_extent,
     };
     std::array const clear_values{
-        vk::ClearValue{.color = {std::array{0.2f, 0.2f, 0.2f, 1.0f}}},
+        vk::ClearValue{.color = {std::array{0.0f, 0.0f, 0.0f, 1.0f}}},
         vk::ClearValue{.depthStencil = {1.0f, 0}},
     };
     vk::RenderPassBeginInfo const render_pass_begin_info{
@@ -503,7 +503,7 @@ void rasterizer_render(camera const& camera) {
     graphics_command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
         rasterization.pipeline_layout, 0, (uint32_t) disney_brdf_sets.size(),
         disney_brdf_sets.data(), 0, nullptr);
-    glm::mat4 const proj_view = get_glsl_render_camera(
+    glm::mat4 const proj_view = get_glsl_rasterizer_camera(
         camera, swapchain_extent.width, swapchain_extent.height);
     rasterization_vert_pc const disney_brdf_vert_pc{
         .proj_view = proj_view,

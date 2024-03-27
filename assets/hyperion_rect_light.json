@@ -73,6 +73,11 @@
             "material": "silver",
             "position": [0.4, 1.86, -6.59]
         },
+        "platform": {
+            "mesh": "hyperion/plate.obj",
+            "material": "red",
+            "position": [0.0, 0.36, 0.0]
+        },
         "floor": {
             "mesh": "hyperion/floor.obj",
             "material": "red"

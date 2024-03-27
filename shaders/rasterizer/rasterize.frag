@@ -25,20 +25,19 @@ layout(std430, set = 1, binding = 1) readonly buffer LIGHT {
 layout(set = 1, binding = 2) uniform sampler2D textures[];
 
 void main() {
-    // if (in_material >= 0) {
-    //     const material_t mat = materials[in_material];
-    //     if (mat.albedo_tex >= 0) {
-    //         out_frag = vec4(mat.albedo * texture(nonuniformEXT(textures[mat.albedo_tex]), in_tex_coord).rgb, 1.0);
-    //     } else {
-    //         out_frag = vec4(mat.albedo, 1.0);
-    //     }
-    // } else /* in_light >= 0 */ {
-    //     const light_t l = lights[in_light];
-    //     if (l.emission_tex >= 0) {
-    //         out_frag = vec4(l.intensity * texture(nonuniformEXT(textures[l.emission_tex]), in_tex_coord).rgb, 1.0);
-    //     } else {
-    //         out_frag = vec4(l.intensity, 1.0);
-    //     }
-    // }
-    out_frag = vec4(1.0, 1.0, 1.0, 1.0);
+    if (in_material >= 0) {
+        const material_t mat = materials[in_material];
+        if (mat.albedo_tex >= 0) {
+            out_frag = vec4(mat.albedo * texture(nonuniformEXT(textures[mat.albedo_tex]), in_tex_coord).rgb, 1.0);
+        } else {
+            out_frag = vec4(mat.albedo, 1.0);
+        }
+    } else /* in_light >= 0 */ {
+        const light_t l = lights[in_light];
+        if (l.emission_tex >= 0) {
+            out_frag = vec4(l.intensity * texture(nonuniformEXT(textures[l.emission_tex]), in_tex_coord).rgb, 1.0);
+        } else {
+            out_frag = vec4(l.intensity, 1.0);
+        }
+    }
 }

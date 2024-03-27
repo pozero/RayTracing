@@ -7,10 +7,10 @@
 
 struct material {
     glm::vec3 albedo{1.0f, 1.0f, 1.0f};
-    float _p0 = 0.0f;
+    int32_t albedo_tex = -1;
 
     glm::vec3 emission{0.0f, 0.0f, 0.0f};
-    float _p1 = 0.0f;
+    int32_t emission_tex = -1;
 
     float metallic = 0.0f;
     float spec_trans = 0.0f;
@@ -25,12 +25,10 @@ struct material {
     float sheen_tint = 0.5f;
     float clearcoat = 0.0f;
     float clearcoat_gloss = 1.0f;
-    int32_t albedo_tex = -1;
-
-    int32_t emission_tex = -1;
     int32_t normal_tex = -1;
+
     int32_t metallic_roughness_tex = -1;
-    float _p3 = 0.0f;
+    float _p0[3]{};
 };
 
 enum class medium_type : int32_t {

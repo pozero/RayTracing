@@ -38,8 +38,7 @@ std::tuple<render_options, camera, scene> load_scene(
         root_json.at("/camera/lookat/2"_json_pointer),
     };
     float const fov = root_json.at("/camera/fov"_json_pointer);
-    camera const camera = create_camera(
-        lookfrom, lookat, fov, options.resolution_x, options.resolution_y);
+    camera const camera = create_camera(lookfrom, lookat, fov);
     // scene
     scene scene{};
     std::filesystem::path const cur_dir =
@@ -125,7 +124,9 @@ std::tuple<render_options, camera, scene> load_scene(
         }
         material const mat{
             .albedo = albedo,
+            .albedo_tex = tex_ids[0],
             .emission = emission,
+            .emission_tex = tex_ids[1],
             .metallic = metallic,
             .spec_trans = spec_trans,
             .ior = ior,
@@ -137,8 +138,6 @@ std::tuple<render_options, camera, scene> load_scene(
             .sheen_tint = sheen_tint,
             .clearcoat = clearcoat,
             .clearcoat_gloss = clearcoat_gloss,
-            .albedo_tex = tex_ids[0],
-            .emission_tex = tex_ids[1],
             .normal_tex = tex_ids[2],
             .metallic_roughness_tex = tex_ids[3],
         };
@@ -269,11 +268,11 @@ std::tuple<render_options, camera, scene> load_scene(
             scene.transformation.push_back(transform);
             light const light{
                 .intensity = intensity,
+                .emission_tex = emission_id,
                 .direction = {},
+                .type = light_type::area,
                 .mesh = mesh,
                 .transform = (int32_t) scene.transformation.size() - 1,
-                .emission_tex = emission_id,
-                .type = light_type::area,
             };
             scene.lights.push_back(light);
         }
@@ -294,11 +293,11 @@ std::tuple<render_options, camera, scene> load_scene(
             };
             light const light{
                 .intensity = intensity,
+                .emission_tex = -1,
                 .direction = direction,
+                .type = light_type::distant,
                 .mesh = -1,
                 .transform = -1,
-                .emission_tex = -1,
-                .type = light_type::distant,
             };
             scene.lights.push_back(light);
         }

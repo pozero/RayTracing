@@ -19,13 +19,12 @@ enum light_type : int32_t {
 
 struct light {
     glm::vec3 intensity;
-    float _p0 = 0.0f;
+    int32_t emission_tex = -1;
 
     glm::vec3 direction;
-    float _p1 = 0.0f;
+    light_type type;
 
     int32_t mesh = -1;
     int32_t transform = -1;
-    int32_t emission_tex = -1;
-    light_type type;
+    float _p0[2]{};
 };

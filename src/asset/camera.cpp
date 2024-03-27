@@ -6,24 +6,32 @@
 
 #include "camera.h"
 
-camera create_camera(glm::vec3 const& lookfrom, glm::vec3 const& lookat,
-    float vfov, uint32_t frame_width, uint32_t frame_height) {
+inline void get_camera_coord(camera& camera) {
+    float const cos_yaw = std::cos(camera.yaw);
+    float const sin_yaw = std::sin(camera.yaw);
+    float const cos_pitch = std::cos(camera.pitch);
+    float const sin_pitch = std::sin(camera.pitch);
+    glm::vec3 const unnormalized_w{
+        cos_pitch * cos_yaw,
+        sin_pitch,
+        cos_pitch * sin_yaw,
+    };
+    camera.w = glm::normalize(unnormalized_w);
+    camera.u = glm::normalize(glm::cross(
+        camera.w, camera.w.y < 0.99f ? glm::vec3{0.0f, 1.0f, 0.0f} :
+                                       glm::vec3{-1.0f, 0.0f, 0.0f}));
+    camera.v = glm::normalize(glm::cross(camera.u, camera.w));
+}
+
+camera create_camera(
+    glm::vec3 const& lookfrom, glm::vec3 const& lookat, float fov) {
     camera camera{};
     camera.position = lookfrom;
-    camera.lookat = lookat;
-    camera.vertical_field_of_view = vfov;
-    camera.w = glm::normalize(camera.position - camera.lookat);
-    camera.u =
-        glm::normalize(glm::cross(glm::vec3{0.0f, 1.0f, 0.0f}, camera.w));
-    camera.v = glm::cross(camera.u, camera.w);
-    camera.focal_length = 1.0f;
-    camera.viewport_height =
-        2 * glm::tan(glm::radians(camera.vertical_field_of_view) / 2) *
-        camera.focal_length;
-    camera.viewport_width =
-        camera.viewport_height * ((float) frame_width / (float) frame_height);
-    camera.pitch = std::asin(camera.w[1]);
-    camera.yaw = std::asin(camera.w[2] / std::cos(camera.pitch));
+    camera.fov = fov;
+    camera.w = glm::normalize(lookat - lookfrom);
+    camera.pitch = std::asin(camera.w.y);
+    camera.yaw = std::atan2(camera.w.z, camera.w.x);
+    get_camera_coord(camera);
     return camera;
 }
 
@@ -41,12 +49,7 @@ void rotate_camera(
             updated_pitch < 0.5f * glm::pi<float>()) {
             camera.pitch = updated_pitch;
         }
-        camera.w[0] = std::cos(camera.yaw) * std::cos(camera.pitch);
-        camera.w[1] = std::sin(camera.pitch);
-        camera.w[2] = std::sin(camera.yaw) * std::cos(camera.pitch);
-        camera.u =
-            glm::normalize(glm::cross(glm::vec3{0.0f, 1.0f, 0.0f}, camera.w));
-        camera.v = glm::cross(camera.u, camera.w);
+        get_camera_coord(camera);
         camera.dirty = true;
     }
     last_cursor_x = cursor_x;
@@ -54,45 +57,40 @@ void rotate_camera(
 }
 
 void move_camera(
-    camera& camera, float delta_time, float along_minus_z, float along_x) {
+    camera& camera, float delta_time, float along_w, float along_u) {
     camera.position += camera.velocity * delta_time *
-                       (along_minus_z * -(camera.w) + along_x * camera.u);
-    camera.dirty = true;
+                       (along_w * camera.w + along_u * camera.u);
 }
 
-glsl_raytracer_camera get_glsl_raytracer_camera(
-    camera const& camera, uint32_t frame_width, uint32_t frame_height) {
-    glm::vec3 const viewport_u = camera.viewport_width * camera.u;
-    glm::vec3 const viewport_v = camera.viewport_height * camera.v;
-    glm::vec3 const pixel_delta_u = viewport_u / (float) frame_width;
-    glm::vec3 const pixel_delta_v = viewport_v / (float) frame_height;
-    glm::vec3 const viewport_upper_left = camera.position -
-                                          camera.focal_length * camera.w -
-                                          0.5f * (viewport_u + viewport_v);
-    glm::vec3 const upper_left_pixel =
-        viewport_upper_left + 0.5f * (pixel_delta_u + pixel_delta_v);
-    float const accumulated_scalar =
-        1.0f / static_cast<float>(camera.frame_counter);
-    return glsl_raytracer_camera{
-        pixel_delta_u,
-        pixel_delta_v,
-        upper_left_pixel,
-        camera.position,
-        accumulated_scalar,
-    };
-}
-
+// FIXME: change coordinate handness
 inline glm::mat4 get_glsl_render_camera_view(camera const& camera) {
-    return glm::lookAt(camera.position, camera.position - camera.w, camera.v);
+    glm::mat4 view_mat{1.0f};
+    // right
+    view_mat[0][0] = camera.u.x;
+    view_mat[1][0] = camera.u.y;
+    view_mat[2][0] = camera.u.z;
+    // up
+    view_mat[0][1] = -camera.v.x;
+    view_mat[1][1] = -camera.v.y;
+    view_mat[2][1] = -camera.v.z;
+    // back
+    view_mat[0][2] = -camera.w.x;
+    view_mat[1][2] = -camera.w.y;
+    view_mat[2][2] = -camera.w.z;
+    // translation
+    view_mat[3][0] = -glm::dot(camera.u, camera.position);
+    view_mat[3][1] = glm::dot(camera.v, camera.position);
+    view_mat[3][2] = glm::dot(camera.w, camera.position);
+    return view_mat;
 }
 
 inline glm::mat4 get_glsl_render_camera_proj(
     camera const& camera, uint32_t frame_width, uint32_t frame_height) {
-    return glm::perspectiveZO(glm::radians(camera.vertical_field_of_view),
+    return glm::perspectiveRH_ZO(glm::radians(camera.fov),
         float(frame_width) / float(frame_height), 0.1f, 100.0f);
 }
 
-glm::mat4 get_glsl_render_camera(
+glm::mat4 get_glsl_rasterizer_camera(
     camera const& camera, uint32_t frame_width, uint32_t frame_height) {
     glm::mat4 const view = get_glsl_render_camera_view(camera);
     glm::mat4 const proj =
@@ -100,7 +98,7 @@ glm::mat4 get_glsl_render_camera(
     return proj * view;
 }
 
-glm::mat4 get_glsl_render_camera_for_environment_map(
+glm::mat4 get_glsl_rasterizer_camera_for_environment_map(
     const camera& camera, uint32_t frame_width, uint32_t frame_height) {
     glm::mat4 const view =
         glm::mat4{glm::mat3{get_glsl_render_camera_view(camera)}};
@@ -117,21 +115,21 @@ void update_camera(GLFWwindow* window, camera& camera, float delta_time) {
     glfwGetCursorPos(window, &cursor_x, &cursor_y);
     rotate_camera(camera, static_cast<float>(cursor_x),
         static_cast<float>(cursor_y), mouse_left_button_clicked);
-    float along_minus_z = 0.0f;
+    float along_w = 0.0f;
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        along_minus_z += 1.0f;
+        along_w += 1.0f;
     }
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        along_minus_z -= 1.0f;
+        along_w -= 1.0f;
     }
-    float along_x = 0.0f;
+    float along_u = 0.0f;
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        along_x += 1.0f;
+        along_u += 1.0f;
     }
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        along_x -= 1.0f;
+        along_u -= 1.0f;
     }
-    if (along_minus_z != 0.0f || along_x != 0.0f) {
-        move_camera(camera, delta_time, along_minus_z, along_x);
+    if (along_w != 0.0f || along_u != 0.0f) {
+        move_camera(camera, delta_time, along_w, along_u);
     }
 }

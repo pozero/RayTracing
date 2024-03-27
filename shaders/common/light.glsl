@@ -3,9 +3,9 @@
 
 struct light_t {
     vec3 intensity;
+    int emission_tex;
     vec3 direction;
+    int type;
     int mesh;
     int transform;
-    int emission_tex;
-    int type;
 };
