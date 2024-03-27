@@ -27,6 +27,12 @@ void rasterizer_render(camera const& camera);
 void rasterizer_present();
 void rasterizer_destroy();
 
+struct glsl_instance {
+    int32_t transform;
+    int32_t material;
+    int32_t light;
+};
+
 static void create_frame_objects();
 static void destroy_frame_objects();
 static void refresh_frame_objects();
@@ -194,11 +200,6 @@ static void destroy_rasterization_pipeline() {
 
 static void prepare_rasterization_resources(scene const& scene) {
     clean_rasterization_resources();
-    struct glsl_instance {
-        int32_t transform;
-        int32_t material;
-        int32_t light;
-    };
     std::vector<vk::DrawIndirectCommand> indirect_draw_command{};
     std::vector<glsl_instance> instances{};
     std::vector<uint32_t> mesh_vertex_count{};

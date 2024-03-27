@@ -26,3 +26,9 @@ template <typename T>
 std::span<T> to_span(std::vector<T> const& vec) {
     return std::span<T>{vec.data(), vec.size()};
 }
+
+template <typename T>
+std::span<T> to_span(
+    std::vector<T> const& vec, uint32_t offset, uint32_t count) {
+    return std::span<T>{vec.data() + offset, count};
+}
