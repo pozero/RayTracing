@@ -19,14 +19,11 @@ struct mesh {
     std::vector<vertex> vertices;
 };
 
-struct instance {
-    glm::mat4 transformation{1.0f};
-    uint32_t mesh = std::numeric_limits<uint32_t>::max();
-    // primitive descriptor
-    uint32_t material = std::numeric_limits<uint32_t>::max();
-    uint32_t medium = std::numeric_limits<uint32_t>::max();
-    // light descriptor
-    uint32_t light = std::numeric_limits<uint32_t>::max();
+struct primitive {
+    int32_t mesh = -1;
+    int32_t transform = -1;
+    int32_t material = -1;
+    int32_t medium = -1;
 };
 
 mesh load_mesh(std::string_view file_path);

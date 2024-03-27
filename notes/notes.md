@@ -1,7 +1,5 @@
 # Notes
 
-Record formulas used in code.
-
 ## Monte Carlo
 
 ### The Monte Carlo Estimator
@@ -58,6 +56,19 @@ The MIS Compensation is based on the idea of sharpening some of the distribution
 $$
 p'(x)=\frac{\max(0, p(x) - \delta)}{\int\max(0, p(x) - \delta)dx}
 $$
+
+## Lights
+
+### Union of Light Cones
+
+Light cone in pbrt is defined as
+
+![](./light_cone.png)
+
+and the union of light cone is shown below
+
+![](./light_cone_union.png)
+
 
 ## Reflection Models
 

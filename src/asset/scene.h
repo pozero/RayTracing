@@ -4,19 +4,23 @@
 #include "asset/material.h"
 #include "asset/light.h"
 #include "asset/texture.h"
+#include "asset/camera.h"
+#include "renderer/render_options.h"
 
 struct scene {
-    // meshes
     std::vector<vertex> vertices;
-    std::vector<instance> instances;
+    std::vector<uint32_t> mesh_vertex_start;
+
+    std::vector<texture_data> textures;
     std::vector<material> materials;
     std::vector<medium> mediums;
-    std::vector<texture_data> textures;
 
-    std::vector<uint32_t> mesh_vertex_start;
+    std::vector<glm::mat4> transformation;
+    std::vector<primitive> primitives;
 
     std::vector<light> lights;
     sky_light sky_light;
 };
 
-scene load_scene(std::string_view file_path);
+std::tuple<render_options, camera, scene> load_scene(
+    std::string_view file_path);

@@ -6,18 +6,20 @@ struct material_t {
     int emission_tex;
 
     float metallic;
-    float subsurface;
+    float spec_trans;
     float ior;
-    float roughness;
+    float subsurface;
 
+    float roughness;
     float specular_tint;
     float anisotropic;
     float sheen;
-    float sheen_tint;
 
+    float sheen_tint;
     float clearcoat;
     float clearcoat_gloss;
     int normal_tex;
+
     int metallic_roughness_tex;
 };
 

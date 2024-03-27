@@ -1,0 +1,205 @@
+{
+    "renderer": {
+        "resolution": [1280, 720],
+        "max_depth": 5
+    },
+    "camera": {
+        "lookfrom": [-15.0, 15.0, 0.0],
+        "lookat": [0.0, 0.0, 0.0],
+        "fov": 60.0
+    },
+    "material": {
+        "orange": {
+            "albedo": [1.0, 0.186, 0.0],
+            "roughness": 0.001,
+            "clearcoat": 1.0,
+            "clearcoat_gloss": 1.0
+        },
+        "black": {
+            "albedo": [0.0, 0.0, 0.0],
+            "roughness": 0.001,
+            "metallic": 0.01
+        },
+        "glass": {
+            "albedo": [1.0, 1.0, 1.0],
+            "spec_trans": 1.0,
+            "ior": 1.45,
+            "roughness": 0.0
+        },
+        "silver": {
+            "albedo": [0.9, 0.9, 0.9],
+            "metallic": 1.0,
+            "roughness": 0.001
+        },
+        "ring_silver": {
+            "albedo": [1.0, 1.0, 1.0],
+            "metallic": 1.0,
+            "roughness": 0.001
+        },
+        "red": {
+            "albedo": [1.0, 0.0, 0.0],
+            "metallic": 0.2,
+            "roughness": 0.5
+        },
+        "off_white": {
+            "albedo": [1.0, 0.94, 0.8]
+        },
+        "ping": {
+            "albedo": [0.93, 0.89, 0.85],
+            "subsurface": 1.0,
+            "roughness": 1.0
+        },
+        "marb1": {
+            "albedo": [0.026, 0.147, 0.075],
+            "roughness": 0.01,
+            "clearcoat": 1.0,
+            "clearcoat_gloss": 1.0
+        },
+        "marb2": {
+            "albedo": [0.099, 0.24, 0.134],
+            "roughness": 0.01,
+            "clearcoat": 1.0,
+            "clearcoat_gloss": 1.0
+        }
+    },
+    "primitive": {
+        "glass ball": {
+            "mesh": "hyperion/glass.obj",
+            "material": "glass",
+            "position": [-0.57, 1.87, 6.55]
+        },
+        "chrome ball": {
+            "mesh": "hyperion/chrome.obj",
+            "material": "silver",
+            "position": [0.4, 1.86, -6.59]
+        },
+        "floor": {
+            "mesh": "hyperion/floor.obj",
+            "material": "red"
+        },
+        "orange ball": {
+            "mesh": "hyperion/orange.obj",
+            "material": "orange",
+            "position": [1.646, 1.6861, 3.5662]
+        },
+        "ring 1": {
+            "mesh": "hyperion/ring1.obj",
+            "material": "ring_silver",
+            "position": [-0.308737, 0.805763, -1.42968]
+        },
+        "ring 2": {
+            "mesh": "hyperion/ring2.obj",
+            "material": "ring_silver",
+            "position": [-0.6706, 0.808472, 0.626798]
+        },
+        "ring 3": {
+            "mesh": "hyperion/ring3.obj",
+            "material": "ring_silver",
+            "position": [-1.44541, 0.808472, 1.72607]
+        },
+        "marble 1": {
+            "mesh": "hyperion/marb1.obj",
+            "material": "marb1",
+            "position": [-3.78, 0.88, -0.84]
+        },
+        "marble 2": {
+            "mesh": "hyperion/marb2.obj",
+            "material": "marb2",
+            "position": [-3.746, 0.969453, 0.974294]
+        },
+        "ping pong": {
+            "mesh": "hyperion/pingpong.obj",
+            "material": "ping",
+            "position": [-3.14, 1.51, -4.12]
+        }
+    },
+    "light": {
+        "area": {
+            "light1": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, -8.0]
+            },
+            "light2": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, -7.0]
+            },
+            "light3": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, -6.0]
+            },
+            "light4": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, -5.0]
+            },
+            "light5": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, -4.0]
+            },
+            "light6": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, -3.0]
+            },
+            "light7": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, -2.0]
+            },
+            "light8": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, -1.0]
+            },
+            "light9": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 0.0]
+            },
+            "light10": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 1.0]
+            },
+            "light11": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 2.0]
+            },
+            "light12": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 3.0]
+            },
+            "light13": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 4.0]
+            },
+            "light14": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 5.0]
+            },
+            "light15": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 6.0]
+            },
+            "light16": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 7.0]
+            },
+            "light17": {
+                "intensity": [5.0, 5.0, 5.0],
+                "mesh": "hyperion/rect_light.obj",
+                "position": [0.0, 5.0, 8.0]
+            }
+        }
+    }
+}

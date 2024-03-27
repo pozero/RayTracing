@@ -8,7 +8,7 @@
 #include <cstdint>
 
 struct sky_light {
-    glm::vec3 intensity;
+    glm::vec3 intensity{0.0f, 0.0f, 0.0f};
     int32_t environment_tex = -1;
 };
 
@@ -19,10 +19,13 @@ enum light_type : int32_t {
 
 struct light {
     glm::vec3 intensity;
-    int32_t emission_tex = -1;
+    float _p0 = 0.0f;
 
     glm::vec3 direction;
-    int32_t mesh = -1;
+    float _p1 = 0.0f;
 
+    int32_t mesh = -1;
+    int32_t transform = -1;
+    int32_t emission_tex = -1;
     light_type type;
 };

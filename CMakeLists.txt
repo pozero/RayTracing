@@ -124,11 +124,16 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/fmt)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/glm)
 
+set(JSON_BuildTests OFF)
+set(JSON_Instal OFF)
+add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/json)
+
 target_link_libraries(Raytracing
     PRIVATE
         glfw
         glm::glm
         fmt::fmt
+        nlohmann_json::nlohmann_json
 )
 
 file(GLOB_RECURSE 
