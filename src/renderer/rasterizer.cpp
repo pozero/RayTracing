@@ -211,8 +211,7 @@ static void prepare_rasterization_resources(scene const& scene) {
             scene.mesh_vertex_start[s] - scene.mesh_vertex_start[s - 1]);
     }
     mesh_vertex_count.push_back(
-        (uint32_t) scene.vertices.size() -
-        (mesh_vertex_count.empty() ? 0 : mesh_vertex_count.back()));
+        (uint32_t) scene.vertices.size() - scene.mesh_vertex_start.back());
     for (uint32_t p = 0; p < scene.primitives.size(); ++p) {
         primitive const& prim = scene.primitives[p];
         uint32_t const mesh = (uint32_t) prim.mesh;
