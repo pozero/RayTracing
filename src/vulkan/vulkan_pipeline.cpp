@@ -7,7 +7,8 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
     std::string_view vert_path, std::string_view frag_path,
     vk::PipelineLayout layout, vk::RenderPass render_pass,
     std::vector<uint32_t> const& frag_specialization_constants,
-    vk::PolygonMode polygon_mode, bool enable_depth) {
+    vk::PolygonMode polygon_mode, bool enable_depth,
+    bool enable_multisampling) {
     vk::Result result;
     vk::Pipeline pipeline;
     vk::ShaderModule vert_module = create_shader_module(device, vert_path);
@@ -76,11 +77,13 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
         .depthBiasEnable = vk::False,
         .lineWidth = 1.0f,
     };
+    enable_multisampling = enable_multisampling &&
+                           multisample_count != vk::SampleCountFlagBits::e1;
     vk::PipelineMultisampleStateCreateInfo const multisampling_info{
-        .rasterizationSamples = multisample_count,
-        .sampleShadingEnable =
-            multisample_count != vk::SampleCountFlagBits::e1 ? vk::True :
-                                                               vk::False,
+        .rasterizationSamples = enable_multisampling ?
+                                    multisample_count :
+                                    vk::SampleCountFlagBits::e1,
+        .sampleShadingEnable = enable_multisampling ? vk::True : vk::False,
         .minSampleShading = 0.2f,
     };
     vk::PipelineDepthStencilStateCreateInfo const depth_stencil_info{

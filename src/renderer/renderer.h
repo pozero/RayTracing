@@ -15,3 +15,5 @@ struct renderer {
 };
 
 void load_rasterizer(renderer& renderer);
+
+void load_bvh_preview(renderer& renderer);

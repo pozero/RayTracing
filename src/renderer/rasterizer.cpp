@@ -187,7 +187,7 @@ static void create_rasterization_pipeline() {
         PATH_FROM_BINARY("shaders/rasterize.vert.spv"),
         PATH_FROM_BINARY("shaders/rasterize.frag.spv"),
         rasterization.pipeline_layout, frame_objects.render_pass, {},
-        vk::PolygonMode::eFill, true);
+        vk::PolygonMode::eFill, true, true);
 }
 
 static void destroy_rasterization_pipeline() {

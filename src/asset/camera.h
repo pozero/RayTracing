@@ -13,14 +13,13 @@ struct glsl_raytracer_camera {
     glm::vec3 pixel_delta_v;
     glm::vec3 upper_left_pixel;
     glm::vec3 camera_position;
-    float accumulated_scalar;
 };
 
 struct camera {
     glm::vec3 position;
-    glm::vec3 w;
-    glm::vec3 u;
-    glm::vec3 v;
+    glm::vec3 front;
+    glm::vec3 right;
+    glm::vec3 up;
 
     float pitch;
     float yaw;

@@ -222,7 +222,7 @@ std::pair<vk::CommandBuffer, uint32_t> get_command_buffer(
         .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
     if (commands.new_buffer) {
         commands.new_buffer = false;
-        VK_CHECK(result, device.waitForFences(1, &command_fence, true, 1e9));
+        VK_CHECK(result, device.waitForFences(1, &command_fence, true, 1e10));
         VK_CHECK(result, device.resetFences(1, &command_fence));
         VK_CHECK(result, command_buffer.reset());
         VK_CHECK(result, command_buffer.begin(begin_info));
@@ -251,6 +251,9 @@ void submit_command_buffer(vk::PipelineBindPoint bind_point) {
     vk::Result result;
     bool const graphics = bind_point == vk::PipelineBindPoint::eGraphics;
     vk_commands& commands = graphics ? graphics_commands : compute_commands;
+    if (commands.new_buffer) {
+        return;
+    }
     vk::Queue const command_queue =
         graphics ? command_queues.graphics_queue : command_queues.compute_queue;
     vk::CommandBuffer const command_buffer = commands.buffers[commands.index];

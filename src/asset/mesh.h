@@ -20,7 +20,7 @@ struct mesh {
 };
 
 struct primitive {
-    int32_t mesh = -1;
+    uint32_t mesh = 0;
     int32_t transform = -1;
     int32_t material = -1;
     int32_t medium = -1;

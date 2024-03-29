@@ -24,7 +24,7 @@ struct light {
     glm::vec3 direction;
     light_type type;
 
-    int32_t mesh = -1;
+    uint32_t mesh = 0;
     int32_t transform = -1;
     float _p0[2]{};
 };

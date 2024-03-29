@@ -6,6 +6,6 @@ struct light_t {
     int emission_tex;
     vec3 direction;
     int type;
-    int mesh;
+    uint mesh;
     int transform;
 };

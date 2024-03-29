@@ -38,10 +38,7 @@ bvh create_bvh(scene const& scene) {
                     mesh_vertex_count[(uint32_t) prim.mesh]),
             scene.transformation[(uint32_t) prim.transform]);
         glsl_instance const inst{
-            .aabb = aabb,
-            .triangle_offset =
-                scene.mesh_vertex_start[(uint32_t) prim.mesh] / 3,
-            .triangle_count = mesh_vertex_count[(uint32_t) prim.mesh] / 3,
+            .mesh = prim.mesh,
             .transform = prim.transform,
             .material = prim.material,
             .medium = prim.medium,
@@ -62,10 +59,7 @@ bvh create_bvh(scene const& scene) {
                     mesh_vertex_count[(uint32_t) light.mesh]),
             scene.transformation[(uint32_t) light.transform]);
         glsl_instance const inst{
-            .aabb = aabb,
-            .triangle_offset =
-                scene.mesh_vertex_start[(uint32_t) light.mesh] / 3,
-            .triangle_count = mesh_vertex_count[(uint32_t) light.mesh] / 3,
+            .mesh = (uint32_t) light.mesh,
             .transform = light.transform,
             .material = -1,
             .medium = -1,
@@ -82,7 +76,6 @@ bvh create_bvh(scene const& scene) {
             .a = scene.vertices[t],
             .b = scene.vertices[t + 1],
             .c = scene.vertices[t + 2],
-            .aabb = aabb,
         });
         triangle_bvh_primitives.push_back(
             bvh_primitive{.aabb = aabb, .obj = t});
@@ -105,33 +98,28 @@ bvh create_bvh(scene const& scene) {
     std::vector<bvh_tree_node> blas_nodes{};
     std::vector<glsl_triangle> sorted_triangles{};
     std::vector<bvh_linear_node> blas_linear_nodes{};
-    std::vector<uint32_t> mesh_bvh_offset{};
+    std::vector<glsl_mesh> meshes{};
     blas_nodes.reserve(2 * triangle_bvh_primitives.size());
     sorted_triangles.resize(triangles.size());
-    mesh_bvh_offset.reserve(mesh_vertex_count.size());
     for (uint32_t m = 0; m < scene.mesh_vertex_start.size(); ++m) {
-        uint32_t sorted_triangle_offset = scene.mesh_vertex_start[m] / 3;
+        uint32_t triangle_offset = scene.mesh_vertex_start[m] / 3;
         uint32_t const triangle_count = mesh_vertex_count[m] / 3;
         uint32_t const blas_node_count_before = (uint32_t) blas_nodes.size();
         bvh_tree_node* mesh_root = build_bvh_recursive(blas_nodes, triangles,
             to_span(triangle_bvh_primitives)
-                .subspan(sorted_triangle_offset, triangle_count),
-            sorted_triangle_offset, sorted_triangles);
+                .subspan(triangle_offset, triangle_count),
+            triangle_offset, sorted_triangles);
         uint32_t blas_linear_node_offset = blas_node_count_before;
         blas_linear_nodes.resize(blas_nodes.size());
         flatten_bvh(blas_linear_nodes, mesh_root, blas_linear_node_offset);
-        // for (uint32_t i = blas_node_count_before; i <
-        // blas_linear_nodes.size();
-        //      ++i) {
-        //     bvh_linear_node& node = blas_linear_nodes[i];
-        //     if (node.obj_count == 0) {
-        //         node.right += blas_node_count_before;
-        //     }
-        // }
-        mesh_bvh_offset.push_back(blas_node_count_before);
+        meshes.push_back(glsl_mesh{
+            .triangle_offset = scene.mesh_vertex_start[m] / 3,
+            .triangle_count = mesh_vertex_count[m] / 3,
+            .bvh_start = blas_node_count_before,
+        });
     }
-    return bvh{tlas_linear_nodes, blas_linear_nodes, mesh_bvh_offset,
-        sorted_instances, sorted_triangles};
+    return bvh{tlas_linear_nodes, blas_linear_nodes, meshes, sorted_instances,
+        sorted_triangles};
 }
 
 template <typename OBJ>

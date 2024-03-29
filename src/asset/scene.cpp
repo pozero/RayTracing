@@ -43,13 +43,13 @@ std::tuple<render_options, camera, scene> load_scene(
     scene scene{};
     std::filesystem::path const cur_dir =
         std::filesystem::path{file_path}.parent_path();
-    std::unordered_map<std::string, int32_t> mesh_indices{};
+    std::unordered_map<std::string, uint32_t> mesh_indices{};
     std::unordered_map<std::string, int32_t> texture_indices{};
     std::unordered_map<std::string, int32_t> material_indices{};
     std::unordered_map<std::string, int32_t> medium_indices{};
     auto const get_mesh = [&cur_dir, &mesh_indices, &scene](
-                              std::string const& path) -> int32_t {
-        int32_t id = -1;
+                              std::string const& path) -> uint32_t {
+        uint32_t id = 0;
         std::filesystem::path full_path = cur_dir / std::filesystem::path{path};
         if (auto const iter = mesh_indices.find(path);
             iter != mesh_indices.end()) {
@@ -59,7 +59,7 @@ std::tuple<render_options, camera, scene> load_scene(
             scene.mesh_vertex_start.push_back((uint32_t) scene.vertices.size());
             scene.vertices.insert(scene.vertices.end(), mesh.vertices.begin(),
                 mesh.vertices.end());
-            id = (int32_t) scene.mesh_vertex_start.size() - 1;
+            id = (uint32_t) scene.mesh_vertex_start.size() - 1;
             mesh_indices[path] = id;
         }
         return id;
@@ -179,7 +179,7 @@ std::tuple<render_options, camera, scene> load_scene(
     auto const& prim_json = root_json.at("/primitive"_json_pointer);
     for (auto const& [key, val] : prim_json.items()) {
         std::string const mesh_file = val.at("/mesh"_json_pointer);
-        int32_t mesh_idx = get_mesh(mesh_file);
+        uint32_t const mesh_idx = get_mesh(mesh_file);
         int32_t material_idx = -1;
         if (val.contains("/material"_json_pointer)) {
             material_idx =
@@ -238,7 +238,7 @@ std::tuple<render_options, camera, scene> load_scene(
                     val.at("/emission_tex"_json_pointer);
                 emission_id = get_texture(emission_tex_file);
             }
-            int32_t const mesh = get_mesh(val.at("/mesh"_json_pointer));
+            uint32_t const mesh = get_mesh(val.at("/mesh"_json_pointer));
             glm::mat4 transform{1.0f};
             if (val.contains("/position"_json_pointer)) {
                 glm::vec3 const position{
@@ -296,8 +296,6 @@ std::tuple<render_options, camera, scene> load_scene(
                 .emission_tex = -1,
                 .direction = direction,
                 .type = light_type::distant,
-                .mesh = -1,
-                .transform = -1,
             };
             scene.lights.push_back(light);
         }
