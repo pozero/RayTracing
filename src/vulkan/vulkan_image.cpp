@@ -329,6 +329,29 @@ vk::Sampler create_default_sampler(vk::Device device) {
     return sampler;
 }
 
+vk::Sampler create_blocky_sampler(vk::Device device) {
+    vk::Result result;
+    vk::Sampler sampler;
+    vk::SamplerCreateInfo const sampler_info{
+        .magFilter = vk::Filter::eNearest,
+        .minFilter = vk::Filter::eNearest,
+        .mipmapMode = vk::SamplerMipmapMode::eNearest,
+        .addressModeU = vk::SamplerAddressMode::eRepeat,
+        .addressModeV = vk::SamplerAddressMode::eRepeat,
+        .addressModeW = vk::SamplerAddressMode::eRepeat,
+        .mipLodBias = 0.0f,
+        .anisotropyEnable = vk::False,
+        .maxAnisotropy = 16.0f,
+        .compareEnable = vk::False,
+        .minLod = 0.0f,
+        .maxLod = 12.0f,
+        .borderColor = vk::BorderColor::eFloatOpaqueBlack,
+        .unnormalizedCoordinates = vk::False,
+    };
+    VK_CHECK_CREATE(result, sampler, device.createSampler(sampler_info));
+    return sampler;
+}
+
 void destroy_image(
     vk::Device device, VmaAllocator vma_alloc, vk_image const& image) {
     if (image.image && image.allocation) {

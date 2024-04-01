@@ -36,11 +36,12 @@ static void create_frame_objects();
 static void destroy_frame_objects();
 static void refresh_frame_objects();
 static void create_megakernel_raytracer_pipeline();
-static void destroy_megakernel_raytraver_pipeline();
-static void prepare_megakernel_raytraver_resources(scene const& scene);
-static void clean_megakernel_raytraver_resources();
+static void destroy_megakernel_raytracer_pipeline();
+static void prepare_megakernel_raytracer_resources(scene const& scene);
+static void clean_megakernel_raytracer_resources();
 static void create_rect_pipeline();
 static void destroy_rect_pipeline();
+static void prepare_rect_resources();
 
 static bool initialized = false;
 
@@ -83,11 +84,13 @@ static uint32_t rand_uint() {
 static vk::DescriptorPool primary_descriptor_pool{};
 static vk::DescriptorPool indexing_descriptor_pool{};
 static vk::Sampler primary_sampler{};
+static vk::Sampler blocky_sampler{};
 static std::array<vk::Semaphore, FRAME_IN_FLIGHT> graphics_semaphores{};
 static std::array<vk::Semaphore, FRAME_IN_FLIGHT> present_semaphores{};
 
 static struct {
     vk::SwapchainKHR swapchain;
+    std::vector<vk::Image> swapchain_image;
     std::vector<vk::ImageView> presents;
     vk::RenderPass render_pass;
     std::vector<vk::Framebuffer> framebuffers;
@@ -96,7 +99,6 @@ static struct {
 
 static uint32_t constexpr MEGAKERNAL_RAYTRACER_SET = 4;
 
-static bool should_clean_accumulation = true;
 static uint32_t accumulation_counter = 0;
 
 static struct {
@@ -124,12 +126,12 @@ static struct {
     vk_buffer medium_buffer;
     vk_buffer light_buffer;
     // set 3
-    vk_image accumulation_scratch_image;  // rendered by tiles for accumulation
-    vk_image preview_image;               // low resolution for preview
+    vk_image accumulation_image;  // rendered by tiles for accumulation
+    vk_image preview_image;       // low resolution for preview
     std::vector<vk_image> texture_array;
     // others
-    vk_image accumulation_image;  // color from scratch image would be copied to
-                                  // this image after all tiles get rendered
+    vk_image output_image;  // color from scratch image would be copied to
+                            // this image after all tiles get rendered
 } megakernel_raytracer;
 
 struct megakernel_raytracer_pc {
@@ -149,10 +151,12 @@ static struct {
 
 struct rect_pc {
     float frame_scalar;
+    uint32_t preview;
 };
 
 static void create_frame_objects() {
-    std::tie(frame_objects.swapchain, frame_objects.presents) =
+    std::tie(frame_objects.swapchain, frame_objects.swapchain_image,
+        frame_objects.presents) =
         create_swapchain(device, surface, command_queues);
     frame_objects.render_pass = create_render_pass(device);
     frame_objects.framebuffers = create_framebuffers(
@@ -179,7 +183,8 @@ static void refresh_frame_objects() {
         device.destroyImageView(view);
     }
     device.destroySwapchainKHR(frame_objects.swapchain);
-    std::tie(frame_objects.swapchain, frame_objects.presents) =
+    std::tie(frame_objects.swapchain, frame_objects.swapchain_image,
+        frame_objects.presents) =
         create_swapchain(device, surface, command_queues);
     frame_objects.framebuffers = create_framebuffers(
         device, frame_objects.render_pass, frame_objects.presents);
@@ -219,7 +224,7 @@ static void create_megakernel_raytracer_pipeline() {
                                                {vk::DescriptorType::eStorageBuffer, 1},
                                                {vk::DescriptorType::eStorageBuffer, 1}},
         std::vector<vk_descriptor_set_binding>{
-                                               {vk::DescriptorType::eStorageImage, 1},
+                                               {vk::DescriptorType::eStorageImage, 2},
                                                {vk::DescriptorType::eCombinedImageSampler, texture_array_size,
                 texture_array_binding_flags}},
     };
@@ -245,7 +250,7 @@ static void create_megakernel_raytracer_pipeline() {
         vk::PipelineCreateFlagBits::eDispatchBase);
 }
 
-static void destroy_megakernel_raytraver_pipeline() {
+static void destroy_megakernel_raytracer_pipeline() {
     for (uint32_t s = 0; s < MEGAKERNAL_RAYTRACER_SET; ++s) {
         device.destroyDescriptorSetLayout(
             megakernel_raytracer.descriptor_layouts[s]);
@@ -254,8 +259,8 @@ static void destroy_megakernel_raytraver_pipeline() {
     device.destroyPipeline(megakernel_raytracer.pipeline);
 }
 
-static void prepare_megakernel_raytraver_resources(scene const& scene) {
-    clean_megakernel_raytraver_resources();
+static void prepare_megakernel_raytracer_resources(scene const& scene) {
+    clean_megakernel_raytracer_resources();
     bvh const bvh = create_bvh(scene);
     std::vector<glm::mat4> inverse_transformations{};
     inverse_transformations.reserve(scene.transformation.size());
@@ -295,11 +300,11 @@ static void prepare_megakernel_raytraver_resources(scene const& scene) {
         create_gpu_only_buffer(vma_alloc, size_in_byte(scene.lights), {},
             vk::BufferUsageFlagBits::eStorageBuffer);
     megakernel_raytracer.preview_image = create_texture2d(device, vma_alloc,
-        graphics_command_buffer, tiles.size.x, tiles.size.y, 1,
+        compute_command_buffer, tiles.size.x, tiles.size.y, 1,
         vk::Format::eR32G32B32A32Sfloat,
         {command_queues.graphics_queue_idx, command_queues.compute_queue_idx},
         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage);
-    megakernel_raytracer.accumulation_scratch_image = create_texture2d(device,
+    megakernel_raytracer.accumulation_image = create_texture2d(device,
         vma_alloc, compute_command_buffer, swapchain_extent.width,
         swapchain_extent.height, 1, vk::Format::eR32G32B32A32Sfloat, {},
         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage |
@@ -316,9 +321,10 @@ static void prepare_megakernel_raytraver_resources(scene const& scene) {
                 vk::ImageUsageFlagBits::eSampled |
                     vk::ImageUsageFlagBits::eTransferDst));
     }
-    megakernel_raytracer.accumulation_image = create_texture2d(device,
-        vma_alloc, graphics_command_buffer, swapchain_extent.width,
-        swapchain_extent.height, 1, vk::Format::eR32G32B32A32Sfloat, {},
+    megakernel_raytracer.output_image = create_texture2d(device, vma_alloc,
+        graphics_command_buffer, swapchain_extent.width,
+        swapchain_extent.height, 1, vk::Format::eR32G32B32A32Sfloat,
+        {command_queues.graphics_queue_idx, command_queues.compute_queue_idx},
         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage |
             vk::ImageUsageFlagBits::eTransferDst);
     update_buffer(vma_alloc, compute_command_buffer,
@@ -431,6 +437,12 @@ static void prepare_megakernel_raytraver_resources(scene const& scene) {
             megakernel_raytracer.descriptor_sets[2][f], 2, 0,
             megakernel_raytracer.light_buffer);
         // set 3
+        update_descriptor_storage_image(device,
+            megakernel_raytracer.descriptor_sets[3][f], 0, 0,
+            megakernel_raytracer.accumulation_image.primary_view);
+        update_descriptor_storage_image(device,
+            megakernel_raytracer.descriptor_sets[3][f], 0, 1,
+            megakernel_raytracer.preview_image.primary_view);
         for (uint32_t t = 0; t < megakernel_raytracer.texture_array.size();
              ++t) {
             update_descriptor_image_sampler_combined(device,
@@ -441,7 +453,7 @@ static void prepare_megakernel_raytraver_resources(scene const& scene) {
     }
 }
 
-static void clean_megakernel_raytraver_resources() {
+static void clean_megakernel_raytracer_resources() {
     destroy_buffer(vma_alloc, megakernel_raytracer.tlas_buffer);
     destroy_buffer(vma_alloc, megakernel_raytracer.blas_buffer);
     destroy_buffer(vma_alloc, megakernel_raytracer.mesh_buffer);
@@ -452,10 +464,9 @@ static void clean_megakernel_raytraver_resources() {
     destroy_buffer(vma_alloc, megakernel_raytracer.material_buffer);
     destroy_buffer(vma_alloc, megakernel_raytracer.medium_buffer);
     destroy_buffer(vma_alloc, megakernel_raytracer.light_buffer);
-    destroy_image(
-        device, vma_alloc, megakernel_raytracer.accumulation_scratch_image);
-    destroy_image(device, vma_alloc, megakernel_raytracer.preview_image);
     destroy_image(device, vma_alloc, megakernel_raytracer.accumulation_image);
+    destroy_image(device, vma_alloc, megakernel_raytracer.preview_image);
+    destroy_image(device, vma_alloc, megakernel_raytracer.output_image);
     for (uint32_t i = 0; i < megakernel_raytracer.texture_array.size(); ++i) {
         destroy_image(device, vma_alloc, megakernel_raytracer.texture_array[i]);
     }
@@ -464,7 +475,7 @@ static void clean_megakernel_raytraver_resources() {
 
 static void create_rect_pipeline() {
     std::vector<vk_descriptor_set_binding> bindings{
-        {vk::DescriptorType::eCombinedImageSampler, 1}
+        {vk::DescriptorType::eCombinedImageSampler, 2}
     };
     rect.descriptor_layout = create_descriptor_set_layout(
         device, vk::ShaderStageFlagBits::eFragment, bindings);
@@ -487,6 +498,17 @@ static void destroy_rect_pipeline() {
     device.destroy(rect.pipeline);
 }
 
+static void prepare_rect_resources() {
+    for (uint32_t f = 0; f < FRAME_IN_FLIGHT; ++f) {
+        update_descriptor_image_sampler_combined(device,
+            rect.descriptor_sets[f], 0, 0, primary_sampler,
+            megakernel_raytracer.output_image.primary_view);
+        update_descriptor_image_sampler_combined(device,
+            rect.descriptor_sets[f], 0, 1, blocky_sampler,
+            megakernel_raytracer.preview_image.primary_view);
+    }
+}
+
 void megakernel_raytracer_initialize(render_options const& options) {
     if (initialized) {
         return;
@@ -500,6 +522,7 @@ void megakernel_raytracer_initialize(render_options const& options) {
     indexing_descriptor_pool = create_descriptor_pool(
         device, vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind);
     primary_sampler = create_default_sampler(device);
+    blocky_sampler = create_blocky_sampler(device);
     vk::SemaphoreCreateInfo const semaphore_info{};
     vk::Result result;
     for (uint32_t f = 0; f < FRAME_IN_FLIGHT; ++f) {
@@ -514,7 +537,8 @@ void megakernel_raytracer_initialize(render_options const& options) {
 }
 
 void megakernel_raytracer_prepare_data(scene const& scene) {
-    prepare_megakernel_raytraver_resources(scene);
+    prepare_megakernel_raytracer_resources(scene);
+    prepare_rect_resources();
 }
 
 void megakernel_raytracer_update_data(scene const&) {
@@ -556,31 +580,24 @@ void megakernel_raytracer_render(camera const& camera) {
         .layerCount = 1,
     };
     if (camera.dirty) {
-        should_clean_accumulation = true;
-        accumulation_counter = 1;
+        accumulation_counter = 0;
         tiles.current.x = 0;
         tiles.current.y = 0;
-        uint32_t preview_render_width = tiles.size.x;
-        uint32_t preview_render_height = tiles.size.y;
-        update_descriptor_image_sampler_combined(device,
-            rect.descriptor_sets[graphics_sync_idx], 0, 0, primary_sampler,
-            megakernel_raytracer.preview_image.primary_view);
+        uint32_t constexpr PREVIEW_RATIO = 5;
+        uint32_t preview_width = win_width / PREVIEW_RATIO;
+        uint32_t preview_height = win_height / PREVIEW_RATIO;
         megakernel_raytracer_pc const megakernel_raytracer_pc{
             .camera = get_glsl_raytracer_camera(
-                camera, preview_render_width, preview_render_height),
+                camera, preview_width, preview_height),
             .random_seed = rand_uint(),
             .preview = 1,
         };
-        update_descriptor_storage_image(device,
-            megakernel_raytracer.descriptor_sets[3][compute_sync_idx], 0, 0,
-            megakernel_raytracer.preview_image.primary_view);
         compute_command_buffer.pushConstants(
             megakernel_raytracer.pipeline_layout,
             vk::ShaderStageFlagBits::eCompute, 0,
             (uint32_t) sizeof(megakernel_raytracer_pc),
             &megakernel_raytracer_pc);
-        compute_command_buffer.dispatch(
-            preview_render_width, preview_render_height, 1);
+        compute_command_buffer.dispatch(preview_width, preview_height, 1);
         vk::ImageMemoryBarrier const preview_barrier{
             .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
             .dstAccessMask = vk::AccessFlagBits::eShaderRead,
@@ -596,24 +613,21 @@ void megakernel_raytracer_render(camera const& camera) {
             vk::PipelineStageFlagBits::eFragmentShader, {}, 0, nullptr, 0,
             nullptr, 1, &preview_barrier);
     } else {
-        update_descriptor_image_sampler_combined(device,
-            rect.descriptor_sets[graphics_sync_idx], 0, 0, primary_sampler,
-            megakernel_raytracer.accumulation_image.primary_view);
-        if (should_clean_accumulation) {
-            should_clean_accumulation = false;
+        if (accumulation_counter == 0 && tiles.current.x == 0 &&
+            tiles.current.y == 0) {
             std::array const black{0.0f, 0.0f, 0.0f, 1.0f};
             vk::ClearColorValue const black_clear{.float32 = black};
             compute_command_buffer.clearColorImage(
-                megakernel_raytracer.accumulation_scratch_image.image,
+                megakernel_raytracer.accumulation_image.image,
                 vk::ImageLayout::eGeneral, &black_clear, 1, &whole_range);
             vk::ImageMemoryBarrier const clear_barrier{
                 .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
                 .dstAccessMask = vk::AccessFlagBits::eShaderRead,
                 .oldLayout = vk::ImageLayout::eGeneral,
                 .newLayout = vk::ImageLayout::eGeneral,
-                .srcQueueFamilyIndex = command_queues.compute_queue_idx,
-                .dstQueueFamilyIndex = command_queues.compute_queue_idx,
-                .image = megakernel_raytracer.accumulation_scratch_image.image,
+                .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+                .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+                .image = megakernel_raytracer.accumulation_image.image,
                 .subresourceRange = whole_range,
             };
             compute_command_buffer.pipelineBarrier(
@@ -627,9 +641,6 @@ void megakernel_raytracer_render(camera const& camera) {
             .random_seed = rand_uint(),
             .preview = 0,
         };
-        update_descriptor_storage_image(device,
-            megakernel_raytracer.descriptor_sets[3][compute_sync_idx], 0, 0,
-            megakernel_raytracer.accumulation_scratch_image.primary_view);
         compute_command_buffer.pushConstants(
             megakernel_raytracer.pipeline_layout,
             vk::ShaderStageFlagBits::eCompute, 0,
@@ -661,24 +672,24 @@ void megakernel_raytracer_render(camera const& camera) {
                 .extent = extent,
             };
             graphics_command_buffer.copyImage(
-                megakernel_raytracer.accumulation_scratch_image.image,
-                vk::ImageLayout::eGeneral,
                 megakernel_raytracer.accumulation_image.image,
+                vk::ImageLayout::eGeneral,
+                megakernel_raytracer.output_image.image,
                 vk::ImageLayout::eGeneral, 1, &image_copy);
-            vk::ImageMemoryBarrier const accumulation_barrier{
+            vk::ImageMemoryBarrier const output_barrier{
                 .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
                 .dstAccessMask = vk::AccessFlagBits::eShaderRead,
                 .oldLayout = vk::ImageLayout::eGeneral,
                 .newLayout = vk::ImageLayout::eGeneral,
                 .srcQueueFamilyIndex = command_queues.graphics_queue_idx,
                 .dstQueueFamilyIndex = command_queues.graphics_queue_idx,
-                .image = megakernel_raytracer.accumulation_image.image,
+                .image = megakernel_raytracer.output_image.image,
                 .subresourceRange = whole_range,
             };
             graphics_command_buffer.pipelineBarrier(
                 vk::PipelineStageFlagBits::eTransfer,
                 vk::PipelineStageFlagBits::eFragmentShader, {}, 0, nullptr, 0,
-                nullptr, 1, &accumulation_barrier);
+                nullptr, 1, &output_barrier);
         }
     }
     // rect
@@ -714,10 +725,11 @@ void megakernel_raytracer_render(camera const& camera) {
     graphics_command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
         rect.pipeline_layout, 0, 1, &rect.descriptor_sets[graphics_sync_idx], 0,
         nullptr);
+    bool const only_preview = accumulation_counter == 0;
     rect_pc const rect_pc{
         .frame_scalar =
-            1.0f /
-            (float) (accumulation_counter == 1 ? 1 : accumulation_counter - 1),
+            only_preview ? 1.0f : 1.0f / (float) accumulation_counter,
+        .preview = only_preview,
     };
     graphics_command_buffer.pushConstants(rect.pipeline_layout,
         vk::ShaderStageFlagBits::eFragment, 0, (uint32_t) sizeof(rect_pc),
@@ -766,6 +778,7 @@ void megakernel_raytracer_destroy() {
     device.destroyDescriptorPool(primary_descriptor_pool);
     device.destroyDescriptorPool(indexing_descriptor_pool);
     device.destroySampler(primary_sampler);
+    device.destroySampler(blocky_sampler);
     for (uint32_t f = 0; f < FRAME_IN_FLIGHT; ++f) {
         device.destroySemaphore(graphics_semaphores[f]);
         device.destroySemaphore(present_semaphores[f]);
@@ -773,8 +786,8 @@ void megakernel_raytracer_destroy() {
     cleanup_staging_buffer(vma_alloc);
     cleanup_staging_image(vma_alloc);
     destroy_rect_pipeline();
-    clean_megakernel_raytraver_resources();
-    destroy_megakernel_raytraver_pipeline();
+    clean_megakernel_raytracer_resources();
+    destroy_megakernel_raytracer_pipeline();
     destroy_frame_objects();
 }
 

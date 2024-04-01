@@ -40,6 +40,8 @@ vk_image create_host_image(VmaAllocator vma_alloc,
 
 vk::Sampler create_default_sampler(vk::Device device);
 
+vk::Sampler create_blocky_sampler(vk::Device device);
+
 void update_host_image(VmaAllocator vma_alloc, vk_image const& image,
     struct texture_data const& texture_data);
 

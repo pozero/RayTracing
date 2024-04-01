@@ -12,8 +12,9 @@ extern vk::SampleCountFlagBits multisample_count;
 
 void prepare_swapchain(vk::PhysicalDevice physical_dev, vk::SurfaceKHR surface);
 
-std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>> create_swapchain(
-    vk::Device device, vk::SurfaceKHR surface, vulkan_queues const& queues);
+std::tuple<vk::SwapchainKHR, std::vector<vk::Image>, std::vector<vk::ImageView>>
+    create_swapchain(
+        vk::Device device, vk::SurfaceKHR surface, vulkan_queues const& queues);
 
 std::tuple<vk::SwapchainKHR, std::vector<vk::ImageView>, struct vk_image,
     struct vk_image>
