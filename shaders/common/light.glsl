@@ -1,5 +1,6 @@
 #define LIGHT_DISTANT 0
-#define LIGHT_AREA 1
+#define LIGHT_AREA_SINGLE_SIDED 1
+#define LIGHT_AREA_DOUBLE_SIDED 2
 
 struct light_t {
     vec3 intensity;

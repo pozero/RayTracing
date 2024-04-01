@@ -10,4 +10,5 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
 
 vk::Pipeline create_compute_pipeline(vk::Device device,
     std::string_view comp_path, vk::PipelineLayout layout,
-    std::vector<uint32_t> const& specialization_constants);
+    std::vector<uint32_t> const& specialization_constants,
+    vk::PipelineCreateFlags flags = {});

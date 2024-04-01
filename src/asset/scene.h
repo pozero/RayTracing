@@ -19,7 +19,6 @@ struct scene {
     std::vector<primitive> primitives;
 
     std::vector<light> lights;
-    sky_light sky_light;
 };
 
 std::tuple<render_options, camera, scene> load_scene(

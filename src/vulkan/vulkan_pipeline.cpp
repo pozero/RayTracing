@@ -128,7 +128,8 @@ vk::Pipeline create_graphics_pipeline(vk::Device device,
 
 vk::Pipeline create_compute_pipeline(vk::Device device,
     std::string_view comp_path, vk::PipelineLayout layout,
-    std::vector<uint32_t> const& specialization_constants) {
+    std::vector<uint32_t> const& specialization_constants,
+    vk::PipelineCreateFlags flags) {
     vk::Result result;
     vk::Pipeline pipeline;
     vk::ShaderModule comp_module = create_shader_module(device, comp_path);
@@ -142,6 +143,7 @@ vk::Pipeline create_compute_pipeline(vk::Device device,
         .pSpecializationInfo = &specialization_info,
     };
     vk::ComputePipelineCreateInfo const pipeline_info{
+        .flags = flags,
         .stage = shader_stage_info,
         .layout = layout,
     };

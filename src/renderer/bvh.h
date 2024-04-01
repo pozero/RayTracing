@@ -4,7 +4,6 @@
 #include "asset/scene.h"
 
 #include <vector>
-#include <tuple>
 
 enum class bvh_split_axis : int32_t {
     none = -1,
@@ -21,7 +20,6 @@ struct bvh_tree_node {
     uint32_t first_obj = 0;
     uint32_t obj_count = 0;
     bvh_split_axis split_axis = bvh_split_axis::none;
-    uint32_t k = std::numeric_limits<uint32_t>::max();
 };
 
 struct bvh_primitive {

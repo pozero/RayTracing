@@ -1,7 +1,9 @@
 #pragma once
 
+#include "renderer/render_options.h"
+
 struct renderer {
-    void (*initialize)() = nullptr;
+    void (*initialize)(render_options const& options) = nullptr;
 
     void (*prepare_data)(struct scene const& scene) = nullptr;
 
@@ -17,3 +19,5 @@ struct renderer {
 void load_rasterizer(renderer& renderer);
 
 void load_bvh_preview(renderer& renderer);
+
+void load_megakernel_raytracer(renderer& renderer);

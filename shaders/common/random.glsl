@@ -1,7 +1,12 @@
+
 // Random generator stolen from https://github.com/grigoryoskin/vulkan-compute-ray-tracing/blob/master/resources/shaders/source/include/random.glsl
 
 uint random_seed_step(const in uint r) {
     return r * 747796405 + 1;
+}
+
+void random_seed_hash_combine(const in uint v) {
+    seed = v + 0x9e3779b9 + (seed<<6) + (seed>>2);
 }
 
 float rand_01() {
@@ -10,10 +15,6 @@ float rand_01() {
     word = (word >> 22) ^ word;
     return float(word) / 4294967295.0f;
 }
-
-// float rand_01(const in vec2 co) {
-//    return fract(sin(dot(co,vec2(12.9898,78.233))) * 43758.5453);
-// }
 
 float rand_interval(const in float min,
                     const in float max) {

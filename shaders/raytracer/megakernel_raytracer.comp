@@ -1,0 +1,307 @@
+#version 460
+
+#extension GL_EXT_scalar_block_layout: require
+#extension GL_EXT_nonuniform_qualifier: require
+
+layout(push_constant, std430) uniform PUSH_CONSTANT {
+    float packed_camera[12];
+    uint random_seed;
+    uint preview;
+};
+
+uint seed = random_seed;
+
+#include "../common/utils.glsl"
+#include "../common/geometry.glsl"
+#include "../common/material.glsl"
+#include "../common/light.glsl"
+#include "../common/random.glsl"
+#include "state.glsl"
+#include "aabb.glsl"
+#include "bvh.glsl"
+#include "ray.glsl"
+#include "camera.glsl"
+
+layout(std430, set = 0, binding = 0) readonly buffer TLAS {
+    bvh_node_t tlas[];
+};
+
+layout(std430, set = 0, binding = 1) readonly buffer BLAS {
+    bvh_node_t blas[];
+};
+
+layout(std430, set = 1, binding = 0) readonly buffer MESH {
+    mesh_t meshes[];
+};
+
+layout(std430, set = 1, binding = 1) readonly buffer TRANSFORM {
+    mat4 transforms[];
+};
+
+layout(std430, set = 1, binding = 2) readonly buffer INVERSE_TRANSFORM {
+    mat4 inverse_transforms[];
+};
+
+layout(std430, set = 1, binding = 3) readonly buffer INSTANCE {
+    instance_t instances[];
+};
+
+layout(std430, set = 1, binding = 4) readonly buffer TRIANGLES {
+    vec4 packed_triangles[];
+};
+
+layout(std430, set = 2, binding = 0) readonly buffer MATERIAL {
+    material_t materials[];
+};
+
+layout(std430, set = 2, binding = 1) readonly buffer MEDIUM {
+    medium_t mediums[];
+};
+
+layout(std430, set = 2, binding = 2) readonly buffer LIGHT {
+    light_t lights[];
+};
+
+layout(rgba32f, set = 3, binding = 0) uniform image2D out_img;
+
+layout(set = 3, binding = 1) uniform sampler2D textures[];
+
+triangle_t unpack_triangle(const in uint idx) {
+    const vertex_t a = unpack_vertex(packed_triangles[idx * 6 + 0],
+                                     packed_triangles[idx * 6 + 1]);
+    const vertex_t b = unpack_vertex(packed_triangles[idx * 6 + 2],
+                                     packed_triangles[idx * 6 + 3]);
+    const vertex_t c = unpack_vertex(packed_triangles[idx * 6 + 4],
+                                     packed_triangles[idx * 6 + 5]);
+    return triangle_t(a, b, c);
+}
+
+bool closest_hit(const in ray_t ray,
+                 inout state_t state) {
+    const float t_min = 0.0;
+    float t_max = INFINITY;
+    const vec3 inv_dir = vec3(1.0) / ray.direction;
+    const ivec3 neg_dir = ivec3(ray.direction.x < 0.0,
+                                ray.direction.y < 0.0,
+                                ray.direction.z < 0.0);
+    uint tlas_current_node = 0;
+    stack_t nodes_to_visit;
+    nodes_to_visit.top = 0;
+    vector_t instances_to_visit;
+    instances_to_visit.size = 0;
+    while (true) {
+        const bvh_node_t node = tlas[tlas_current_node];
+        if (hit_aabb(node.aabb, ray, inv_dir, neg_dir, t_min, t_max)) {
+            if (node.obj_count > 0) {
+                for (uint i = node.first_obj; i < node.first_obj + node.obj_count; ++ i) {
+                    push_vector(instances_to_visit, i);
+                }
+                if (!pop_stack(nodes_to_visit, tlas_current_node)) {
+                    break;
+                }
+            } else {
+                const bool neg = neg_dir[node.split_axis] != 0;
+                const uint cur_node = neg ? node.right : tlas_current_node + 1;
+                const uint next_node = neg ? tlas_current_node + 1 : node.right;
+                tlas_current_node = cur_node;
+                push_stack(nodes_to_visit, next_node);
+            }
+        } else {
+            if (!pop_stack(nodes_to_visit, tlas_current_node)) {
+                break;
+            }
+        }
+    }
+    uint final_instance = 0;
+    uint final_triangle = 0;
+    hit_record_t final_hit_record;
+    for (uint i = 0; i < instances_to_visit.size; ++ i) {
+        const instance_t instance = instances[instances_to_visit.data[i]];
+        const mat4 inverse_transform = instance.transform >= 0 ? inverse_transforms[instance.transform] :
+            mat4(1.0);
+        const ray_t transformed_ray = ray_t(vec3(inverse_transform * vec4(ray.origin, 1.0)),
+                                            vec3(inverse_transform * vec4(ray.direction, 0.0)));
+        const vec3 t_inv_dir = vec3(1.0) / transformed_ray.direction;
+        const ivec3 t_neg_dir = ivec3(transformed_ray.direction.x < 0.0,
+                                      transformed_ray.direction.y < 0.0,
+                                      transformed_ray.direction.z < 0.0);
+        const mesh_t mesh = meshes[instance.mesh];
+        uint blas_current_node = mesh.bvh_start;
+        clear_stack(nodes_to_visit);
+        while (true) {
+            const bvh_node_t node = blas[blas_current_node];
+            if (hit_aabb(node.aabb, transformed_ray, t_inv_dir, t_neg_dir, t_min, t_max)) {
+                if (node.obj_count > 0) {
+                    for (uint t = node.first_obj; t < node.first_obj + node.obj_count; ++ t) {
+                        const triangle_t triangle = unpack_triangle(t);
+                        const hit_record_t rec = hit_triangle(triangle, ray, t_min, t_max);
+                        if (rec.hit) {
+                            t_max = state.hit_t;
+                            final_instance = instances_to_visit.data[i];
+                            final_triangle = t;
+                            final_hit_record = rec;
+                        }
+                    }
+                    if (!pop_stack(nodes_to_visit, blas_current_node)) {
+                        break;
+                    }
+                } else {
+                    const bool neg = t_neg_dir[node.split_axis] != 0;
+                    const uint cur_node = neg ? node.right : blas_current_node + 1;
+                    const uint next_node = neg ? blas_current_node + 1 : node.right;
+                    blas_current_node = cur_node;
+                    push_stack(nodes_to_visit, next_node);
+                }
+            } else {
+                if (!pop_stack(nodes_to_visit, blas_current_node)) {
+                    break;
+                }
+            }
+        }
+    }
+    if (t_max == INFINITY) {
+        return false;
+    }
+    const instance_t instance = instances[final_instance];
+    const triangle_t triangle = unpack_triangle(final_triangle);
+    const vec3 a = triangle.a.position;
+    const vec3 b = triangle.b.position;
+    const vec3 c = triangle.c.position;
+    const vec3 a_normal = triangle.a.normal;
+    const vec3 b_normal = triangle.b.normal;
+    const vec3 c_normal = triangle.c.normal;
+    const vec2 a_uv = triangle.a.tex_coord;
+    const vec2 b_uv = triangle.b.tex_coord;
+    const vec2 c_uv = triangle.c.tex_coord;
+    state.hit_position = ray_at(ray, final_hit_record.t);
+    // normal coordinate in model space
+    const vec3 outward_normal = final_hit_record.b0 * a_normal + 
+        final_hit_record.b1 * b_normal + 
+        final_hit_record.b2 * c_normal;
+    state.front_face = dot(ray.direction, outward_normal) < 0.0;
+    state.hit_normal = state.front_face ? outward_normal : -outward_normal;
+    const vec3 delta_pos1 = b - a;
+    const vec3 delta_pos2 = c - a;
+    const vec2 delta_uv1 = b_uv - a_uv;
+    const vec2 delta_uv2 = c_uv - a_uv;
+    const float delta_uv_inv_dev = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
+    state.hit_tangent = delta_uv_inv_dev * (delta_uv2.y * delta_pos1 - delta_uv1.y * delta_pos2);
+    state.hit_bitangent = delta_uv_inv_dev * (-delta_uv2.x * delta_pos1 + delta_uv1.x * delta_pos2);
+    // transform to world space
+    if (instance.transform >= 0) {
+        const mat4 transform = transforms[instance.transform];
+        const mat4 inverse_transform = inverse_transforms[instance.transform];
+        state.hit_normal = normalize(transpose(mat3(inverse_transform)) * state.hit_normal);
+        state.hit_tangent = normalize(mat3(transform) * state.hit_tangent);
+        state.hit_bitangent = normalize(mat3(transform) * state.hit_bitangent);
+    }
+    state.hit_uv = final_hit_record.b0 * a_uv + 
+        final_hit_record.b1 * b_uv + 
+        final_hit_record.b2 * c_uv;
+    state.hit_t = final_hit_record.t;
+    state.inst_material = instance.material;
+    state.inst_medium = instance.medium;
+    state.inst_light = instance.light;
+    return true;
+}
+
+bool any_hit(const in ray_t ray,
+             const in float t_max) {
+    const float t_min = 0.0;
+    const vec3 inv_dir = vec3(1.0) / ray.direction;
+    const ivec3 neg_dir = ivec3(ray.direction.x < 0.0,
+                                ray.direction.y < 0.0,
+                                ray.direction.z < 0.0);
+    uint tlas_current_node = 0;
+    stack_t nodes_to_visit;
+    nodes_to_visit.top = 0;
+    vector_t instances_to_visit;
+    instances_to_visit.size = 0;
+    while (true) {
+        const bvh_node_t node = tlas[tlas_current_node];
+        if (hit_aabb(node.aabb, ray, inv_dir, neg_dir, t_min, t_max)) {
+            if (node.obj_count > 0) {
+                for (uint i = node.first_obj; i < node.first_obj + node.obj_count; ++ i) {
+                    push_vector(instances_to_visit, i);
+                }
+                if (!pop_stack(nodes_to_visit, tlas_current_node)) {
+                    break;
+                }
+            } else {
+                const bool neg = neg_dir[node.split_axis] != 0;
+                const uint cur_node = neg ? node.right : tlas_current_node + 1;
+                const uint next_node = neg ? tlas_current_node + 1 : node.right;
+                tlas_current_node = cur_node;
+                push_stack(nodes_to_visit, next_node);
+            }
+        } else {
+            if (!pop_stack(nodes_to_visit, tlas_current_node)) {
+                break;
+            }
+        }
+    }
+    for (uint i = 0; i < instances_to_visit.size; ++ i) {
+        const instance_t instance = instances[instances_to_visit.data[i]];
+        const mesh_t mesh = meshes[instance.mesh];
+        const mat4 transform = instance.transform >= 0 ? transforms[instance.transform] :
+            mat4(1.0);
+        const mat4 inverse_transform = instance.transform >= 0 ? inverse_transforms[instance.transform] :
+            mat4(1.0);
+        const ray_t transformed_ray = ray_t(vec3(inverse_transform * vec4(ray.origin, 1.0)),
+                                            vec3(inverse_transform * vec4(ray.direction, 0.0)));
+        const vec3 t_inv_dir = vec3(1.0) / transformed_ray.direction;
+        const ivec3 t_neg_dir = ivec3(transformed_ray.direction.x < 0.0,
+                                      transformed_ray.direction.y < 0.0,
+                                      transformed_ray.direction.z < 0.0);
+        uint blas_current_node = mesh.bvh_start;
+        clear_stack(nodes_to_visit);
+        while (true) {
+            const bvh_node_t node = blas[blas_current_node];
+            if (hit_aabb(node.aabb, transformed_ray, t_inv_dir, t_neg_dir, t_min, t_max)) {
+                if (node.obj_count > 0) {
+                    for (uint t = node.first_obj; t < node.first_obj + node.obj_count; ++ t) {
+                        const triangle_t triangle = unpack_triangle(t);
+                        if (hit_triangle_quick(triangle, ray, t_min, t_max)) {
+                            return true;
+                        }
+                    }
+                    if (!pop_stack(nodes_to_visit, blas_current_node)) {
+                        break;
+                    }
+                } else {
+                    const bool neg = t_neg_dir[node.split_axis] != 0;
+                    const uint cur_node = neg ? node.right : blas_current_node + 1;
+                    const uint next_node = neg ? blas_current_node + 1 : node.right;
+                    blas_current_node = cur_node;
+                    push_stack(nodes_to_visit, next_node);
+                }
+            } else {
+                if (!pop_stack(nodes_to_visit, blas_current_node)) {
+                    break;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void main() {
+    const camera_t camera = unpack_camera(packed_camera);
+    const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
+    const uint flat_tex_coord = imageSize(out_img).x * tex_coord.y + tex_coord.x;
+    random_seed_hash_combine(flat_tex_coord);
+    const vec3 pixel = camera.upper_left_pixel + 
+        tex_coord.x * camera.pixel_delta_u + 
+        tex_coord.y * camera.pixel_delta_v;
+    const float sample_offset_x = -0.5 + rand_01();
+    const float sample_offset_y = -0.5 + rand_01();
+    const vec3 pixel_sample_offset = sample_offset_x * camera.pixel_delta_u + 
+                                     sample_offset_y * camera.pixel_delta_v;
+    const vec3 pixel_sample = pixel + pixel_sample_offset;
+    ray_t ray = ray_t(camera.position, normalize(pixel_sample - camera.position));
+    state_t state;
+    const bool hit = closest_hit(ray, state);
+    const vec3 color = hit ? vec3(1.0) : vec3(0.0);
+    imageStore(out_img, tex_coord, vec4(color, 1.0));
+}
+

@@ -1,12 +1,10 @@
 #version 460
 
 #extension GL_EXT_scalar_block_layout: require
-#extension GL_EXT_nonuniform_qualifier: require
 
 #include "../common/utils.glsl"
 #include "../common/geometry.glsl"
-#include "../common/material.glsl"
-#include "../common/light.glsl"
+#include "state.glsl"
 #include "aabb.glsl"
 #include "bvh.glsl"
 #include "ray.glsl"
@@ -32,10 +30,6 @@ layout(std430, set = 1, binding = 1) readonly buffer INVERSE_TRANSFORM {
 
 layout(std430, set = 1, binding = 2) readonly buffer INSTANCE {
     instance_t instances[];
-};
-
-layout(std430, set = 1, binding = 3) readonly buffer TRIANGLE {
-    triangle_t triangles[];
 };
 
 layout(rgba32f, set = 2, binding = 0) uniform image2D out_img;

@@ -114,3 +114,18 @@ $$
 \end{cases}
 $$
 
+## Wavefront Ray Tracer Architecture
+
+![](./wavefront_step1.svg)
+
+![](./wavefront_step2.svg)
+
+![](./wavefront_step3.svg)
+
+![](./wavefront_step4_1.svg)
+
+![](./wavefront_step4_2.svg)
+
+![](./wavefront_step4_3.svg)
+
+![](./wavefront_step5.svg)

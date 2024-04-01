@@ -13,9 +13,9 @@ int main() {
     win_width = render_options.resolution_x;
     win_height = render_options.resolution_y;
     renderer renderer{};
-    load_bvh_preview(renderer);
+    load_megakernel_raytracer(renderer);
     create_render_context();
-    renderer.initialize();
+    renderer.initialize(render_options);
     renderer.prepare_data(scene);
     high_resolution_clock clock{};
     clock.tick();
@@ -28,6 +28,7 @@ int main() {
         submit_command_buffer(vk::PipelineBindPoint::eGraphics);
         renderer.present();
         poll_window_event();
+        camera.dirty = false;
     }
     wait_vulkan();
     renderer.destroy();

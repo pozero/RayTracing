@@ -1,7 +1,8 @@
 {
     "renderer": {
         "resolution": [1280, 720],
-        "max_depth": 5
+        "max_depth": 5,
+        "tile": [256, 144]
     },
     "camera": {
         "lookfrom": [-15.0, 15.0, 0.0],
@@ -122,86 +123,103 @@
         "area": {
             "light1": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, -8.0]
             },
             "light2": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, -7.0]
             },
             "light3": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, -6.0]
             },
             "light4": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, -5.0]
             },
             "light5": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, -4.0]
             },
             "light6": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, -3.0]
             },
             "light7": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, -2.0]
             },
             "light8": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, -1.0]
             },
             "light9": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 0.0]
             },
             "light10": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 1.0]
             },
             "light11": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 2.0]
             },
             "light12": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 3.0]
             },
             "light13": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 4.0]
             },
             "light14": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 5.0]
             },
             "light15": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 6.0]
             },
             "light16": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 7.0]
             },
             "light17": {
                 "intensity": [5.0, 5.0, 5.0],
+                "two_sided": true,
                 "mesh": "hyperion/rect_light.obj",
                 "position": [0.0, 5.0, 8.0]
             }

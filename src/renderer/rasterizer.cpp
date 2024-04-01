@@ -20,7 +20,7 @@
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
 #pragma clang diagnostic ignored "-Wglobal-constructors"
 
-void rasterizer_initialize();
+void rasterizer_initialize(render_options const& options);
 void rasterizer_prepare_data(scene const& scene);
 void rasterizer_update_data(scene const& scene);
 void rasterizer_render(camera const& camera);
@@ -268,8 +268,8 @@ static void prepare_rasterization_resources(scene const& scene) {
         create_gpu_only_buffer(vma_alloc, size_in_byte(scene.lights), {},
             vk::BufferUsageFlagBits::eStorageBuffer);
     rasterization.texture_array.reserve(scene.textures.size());
-    for (uint32_t t = 1; t <= scene.textures.size(); ++t) {
-        texture_data const& data = scene.textures[t - 1];
+    for (uint32_t t = 0; t < scene.textures.size(); ++t) {
+        texture_data const& data = scene.textures[t];
         vk::Format const format = data.format == texture_format::unorm ?
                                       vk::Format::eR8G8B8A8Unorm :
                                       vk::Format::eR32G32B32A32Sfloat;
@@ -423,7 +423,7 @@ void load_rasterizer(renderer& renderer) {
     renderer.destroy = rasterizer_destroy;
 }
 
-void rasterizer_initialize() {
+void rasterizer_initialize(render_options const&) {
     if (initialized) {
         return;
     }

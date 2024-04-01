@@ -21,7 +21,7 @@
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
 #pragma clang diagnostic ignored "-Wglobal-constructors"
 
-void bvh_preview_initialize();
+void bvh_preview_initialize(render_options const& options);
 void bvh_preview_prepare_data(scene const& scene);
 void bvh_preview_update_data(scene const& scene);
 void bvh_preview_render(camera const& camera);
@@ -34,10 +34,10 @@ static void refresh_frame_objects();
 static void create_bvh_preview_pipeline();
 static void destroy_bvh_preview_pipeline();
 static void prepare_bvh_preview_resources(scene const& scene);
+static void clean_bvh_preview_resources();
 static void create_rect_pipeline();
 static void destroy_rect_pipeline();
 static void prepare_rect_resources();
-static void clean_bvh_preview_resources();
 
 static bool initialized = false;
 
@@ -73,7 +73,6 @@ static struct {
     vk_buffer mesh_buffer;
     vk_buffer inverse_transform_buffer;
     vk_buffer instance_buffer;
-    vk_buffer triangle_buffer;
     // set 2 resources
     vk_image output_image;
 } bvh_preview;
@@ -130,12 +129,11 @@ static void refresh_frame_objects() {
 }
 
 static void create_bvh_preview_pipeline() {
-    std::array const bindings = {
+    std::array const bindings{
         std::vector<vk_descriptor_set_binding>{
                                                {vk::DescriptorType::eStorageBuffer, 1},
                                                {vk::DescriptorType::eStorageBuffer, 1}},
         std::vector<vk_descriptor_set_binding>{
-                                               {vk::DescriptorType::eStorageBuffer, 1},
                                                {vk::DescriptorType::eStorageBuffer, 1},
                                                {vk::DescriptorType::eStorageBuffer, 1},
                                                {vk::DescriptorType::eStorageBuffer, 1}},
@@ -188,9 +186,6 @@ static void prepare_bvh_preview_resources(scene const& scene) {
     bvh_preview.instance_buffer =
         create_gpu_only_buffer(vma_alloc, size_in_byte(bvh.instances), {},
             vk::BufferUsageFlagBits::eStorageBuffer);
-    bvh_preview.triangle_buffer =
-        create_gpu_only_buffer(vma_alloc, size_in_byte(bvh.triangles), {},
-            vk::BufferUsageFlagBits::eStorageBuffer);
     bvh_preview.output_image = create_texture2d(device, vma_alloc,
         command_buffer, win_width, win_height, 1,
         vk::Format::eR32G32B32A32Sfloat,
@@ -207,8 +202,6 @@ static void prepare_bvh_preview_resources(scene const& scene) {
         to_byte_span(inverse_transformations), 0);
     update_buffer(vma_alloc, command_buffer, bvh_preview.instance_buffer,
         to_byte_span(bvh.instances), 0);
-    update_buffer(vma_alloc, command_buffer, bvh_preview.triangle_buffer,
-        to_byte_span(bvh.triangles), 0);
     // set 0 barrier
     std::array const set_0_bufs{
         bvh_preview.tlas_buffer,
@@ -264,9 +257,6 @@ static void prepare_bvh_preview_resources(scene const& scene) {
         update_descriptor_storage_buffer_whole(device,
             bvh_preview.descriptor_sets[1][f], 2, 0,
             bvh_preview.instance_buffer);
-        update_descriptor_storage_buffer_whole(device,
-            bvh_preview.descriptor_sets[1][f], 3, 0,
-            bvh_preview.triangle_buffer);
         // set 2
         update_descriptor_storage_image(device,
             bvh_preview.descriptor_sets[2][f], 0, 0,
@@ -313,7 +303,6 @@ static void clean_bvh_preview_resources() {
     destroy_buffer(vma_alloc, bvh_preview.mesh_buffer);
     destroy_buffer(vma_alloc, bvh_preview.inverse_transform_buffer);
     destroy_buffer(vma_alloc, bvh_preview.instance_buffer);
-    destroy_buffer(vma_alloc, bvh_preview.triangle_buffer);
     destroy_image(device, vma_alloc, bvh_preview.output_image);
 }
 
@@ -326,7 +315,7 @@ void load_bvh_preview(renderer& renderer) {
     renderer.destroy = bvh_preview_destroy;
 }
 
-void bvh_preview_initialize() {
+void bvh_preview_initialize(render_options const&) {
     if (initialized) {
         return;
     }
@@ -363,7 +352,6 @@ void bvh_preview_render(camera const& camera) {
         get_command_buffer(vk::PipelineBindPoint::eCompute);
     auto const [graphics_command_buffer, graphics_sync_idx] =
         get_command_buffer(vk::PipelineBindPoint::eGraphics);
-    CHECK(compute_sync_idx == graphics_sync_idx, "");
     result = swapchain_acquire_next_image_wrapper(device,
         frame_objects.swapchain, 1e9, present_semaphores[graphics_sync_idx],
         nullptr, &frame_objects.swapchain_image_idx);
@@ -385,7 +373,7 @@ void bvh_preview_render(camera const& camera) {
         bvh_preview_sets[s] = bvh_preview.descriptor_sets[s][compute_sync_idx];
     }
     compute_command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-        bvh_preview.pipeline_layout, 0, (uint32_t) BVH_PREVIEW_SET,
+        bvh_preview.pipeline_layout, 0, BVH_PREVIEW_SET,
         bvh_preview_sets.data(), 0, nullptr);
     compute_command_buffer.pushConstants(bvh_preview.pipeline_layout,
         vk::ShaderStageFlagBits::eCompute, 0, (uint32_t) sizeof(bvh_preview_pc),

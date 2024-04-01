@@ -7,14 +7,11 @@
 
 #include <cstdint>
 
-struct sky_light {
-    glm::vec3 intensity{0.0f, 0.0f, 0.0f};
-    int32_t environment_tex = -1;
-};
-
 enum light_type : int32_t {
     distant = 0,
-    area
+    area_single_sided,
+    area_double_sided,
+    sky
 };
 
 struct light {
