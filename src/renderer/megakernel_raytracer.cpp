@@ -85,6 +85,7 @@ static vk::DescriptorPool primary_descriptor_pool{};
 static vk::DescriptorPool indexing_descriptor_pool{};
 static vk::Sampler primary_sampler{};
 static vk::Sampler blocky_sampler{};
+static std::array<vk::Semaphore, FRAME_IN_FLIGHT> compute_semaphores{};
 static std::array<vk::Semaphore, FRAME_IN_FLIGHT> graphics_semaphores{};
 static std::array<vk::Semaphore, FRAME_IN_FLIGHT> present_semaphores{};
 
@@ -323,8 +324,7 @@ static void prepare_megakernel_raytracer_resources(scene const& scene) {
     }
     megakernel_raytracer.output_image = create_texture2d(device, vma_alloc,
         graphics_command_buffer, swapchain_extent.width,
-        swapchain_extent.height, 1, vk::Format::eR32G32B32A32Sfloat,
-        {command_queues.graphics_queue_idx, command_queues.compute_queue_idx},
+        swapchain_extent.height, 1, vk::Format::eR32G32B32A32Sfloat, {},
         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage |
             vk::ImageUsageFlagBits::eTransferDst);
     update_buffer(vma_alloc, compute_command_buffer,
@@ -526,6 +526,8 @@ void megakernel_raytracer_initialize(render_options const& options) {
     vk::SemaphoreCreateInfo const semaphore_info{};
     vk::Result result;
     for (uint32_t f = 0; f < FRAME_IN_FLIGHT; ++f) {
+        VK_CHECK_CREATE(result, compute_semaphores[f],
+            device.createSemaphore(semaphore_info));
         VK_CHECK_CREATE(result, graphics_semaphores[f],
             device.createSemaphore(semaphore_info));
         VK_CHECK_CREATE(result, present_semaphores[f],
@@ -652,6 +654,20 @@ void megakernel_raytracer_render(camera const& camera) {
         bool const finished = next_tile();
         if (finished) {
             ++accumulation_counter;
+            vk::ImageMemoryBarrier const render_barrier{
+                .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
+                .dstAccessMask = vk::AccessFlagBits::eTransferRead,
+                .oldLayout = vk::ImageLayout::eGeneral,
+                .newLayout = vk::ImageLayout::eGeneral,
+                .srcQueueFamilyIndex = command_queues.compute_queue_idx,
+                .dstQueueFamilyIndex = command_queues.compute_queue_idx,
+                .image = megakernel_raytracer.accumulation_image.image,
+                .subresourceRange = whole_range,
+            };
+            compute_command_buffer.pipelineBarrier(
+                vk::PipelineStageFlagBits::eComputeShader,
+                vk::PipelineStageFlagBits::eTransfer, {}, 0, nullptr, 0,
+                nullptr, 1, &render_barrier);
             vk::ImageSubresourceLayers const layer{
                 .aspectMask = vk::ImageAspectFlagBits::eColor,
                 .mipLevel = 0,
@@ -671,25 +687,16 @@ void megakernel_raytracer_render(camera const& camera) {
                 .dstOffset = offset,
                 .extent = extent,
             };
-            graphics_command_buffer.copyImage(
+            compute_command_buffer.copyImage(
                 megakernel_raytracer.accumulation_image.image,
                 vk::ImageLayout::eGeneral,
                 megakernel_raytracer.output_image.image,
                 vk::ImageLayout::eGeneral, 1, &image_copy);
-            vk::ImageMemoryBarrier const output_barrier{
-                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-                .dstAccessMask = vk::AccessFlagBits::eShaderRead,
-                .oldLayout = vk::ImageLayout::eGeneral,
-                .newLayout = vk::ImageLayout::eGeneral,
-                .srcQueueFamilyIndex = command_queues.graphics_queue_idx,
-                .dstQueueFamilyIndex = command_queues.graphics_queue_idx,
-                .image = megakernel_raytracer.output_image.image,
-                .subresourceRange = whole_range,
-            };
-            graphics_command_buffer.pipelineBarrier(
-                vk::PipelineStageFlagBits::eTransfer,
-                vk::PipelineStageFlagBits::eFragmentShader, {}, 0, nullptr, 0,
-                nullptr, 1, &output_barrier);
+            add_submit_signal(vk::PipelineBindPoint::eCompute,
+                compute_semaphores[compute_sync_idx]);
+            add_submit_wait(vk::PipelineBindPoint::eGraphics,
+                compute_semaphores[compute_sync_idx],
+                vk::PipelineStageFlagBits::eFragmentShader);
         }
     }
     // rect
@@ -780,6 +787,7 @@ void megakernel_raytracer_destroy() {
     device.destroySampler(primary_sampler);
     device.destroySampler(blocky_sampler);
     for (uint32_t f = 0; f < FRAME_IN_FLIGHT; ++f) {
+        device.destroySemaphore(compute_semaphores[f]);
         device.destroySemaphore(graphics_semaphores[f]);
         device.destroySemaphore(present_semaphores[f]);
     }
