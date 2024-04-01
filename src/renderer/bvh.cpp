@@ -73,9 +73,9 @@ bvh create_bvh(scene const& scene) {
         aabb const aabb =
             create_aabb(to_span(scene.vertices).subspan(3 * t, 3));
         triangles.push_back(glsl_triangle{
-            .a = scene.vertices[t],
-            .b = scene.vertices[t + 1],
-            .c = scene.vertices[t + 2],
+            .a = scene.vertices[3 * t + 0],
+            .b = scene.vertices[3 * t + 1],
+            .c = scene.vertices[3 * t + 2],
         });
         triangle_bvh_primitives.push_back(
             bvh_primitive{.aabb = aabb, .obj = t});
@@ -102,13 +102,13 @@ bvh create_bvh(scene const& scene) {
     blas_nodes.reserve(2 * triangle_bvh_primitives.size());
     sorted_triangles.resize(triangles.size());
     for (uint32_t m = 0; m < scene.mesh_vertex_start.size(); ++m) {
-        uint32_t triangle_offset = scene.mesh_vertex_start[m] / 3;
-        uint32_t const triangle_count = mesh_vertex_count[m] / 3;
+        uint32_t sorted_triangle_offset = scene.mesh_vertex_start[m] / 3;
         uint32_t const blas_node_count_before = (uint32_t) blas_nodes.size();
         bvh_tree_node* mesh_root = build_bvh_recursive(blas_nodes, triangles,
             to_span(triangle_bvh_primitives)
-                .subspan(triangle_offset, triangle_count),
-            triangle_offset, sorted_triangles);
+                .subspan(
+                    scene.mesh_vertex_start[m] / 3, mesh_vertex_count[m] / 3),
+            sorted_triangle_offset, sorted_triangles);
         uint32_t blas_linear_node_offset = blas_node_count_before;
         blas_linear_nodes.resize(blas_nodes.size());
         flatten_bvh(blas_linear_nodes, mesh_root, blas_linear_node_offset);
@@ -223,23 +223,9 @@ bvh_tree_node* build_bvh_recursive(std::vector<bvh_tree_node>& all_nodes,
                             return b <= min_cost_split;
                         });
                     mid = (uint32_t) (iter - bvh_primitives.begin());
-                    if (mid == 0 || mid == bvh_primitives.size()) {
-                        for (uint32_t i = 0; i < NBUCKET; ++i) {
-                            fmt::println("{}: {} ({}, {}) ({}, {}) ({}, {})", i,
-                                bucket_obj_counts[i], bucket_aabbs[i].x_min,
-                                bucket_aabbs[i].x_max, bucket_aabbs[i].y_min,
-                                bucket_aabbs[i].y_max, bucket_aabbs[i].z_min,
-                                bucket_aabbs[i].z_max);
-                        }
-                        CHECK(false, "");
-                    }
                 } else {
                     goto create_leaf;
                 }
-            }
-            if (mid == 0 || mid == bvh_primitives.size()) {
-                fmt::println("{} {}", mid, bvh_primitives.size());
-                CHECK(false, "");
             }
             bvh_tree_node* left = build_bvh_recursive(all_nodes, all_objects,
                 bvh_primitives.subspan(0, mid), sorted_object_offset,

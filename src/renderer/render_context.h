@@ -7,7 +7,7 @@
 
 #include "vulkan/vulkan_header.h"
 
-#define VK_DBG 1
+#define VK_DBG
 
 bool window_should_close();
 

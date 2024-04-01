@@ -51,6 +51,10 @@ static struct {
     glm::uvec2 current{0};
 } tiles;
 
+uint32_t constexpr PREVIEW_RATIO = 5;
+static uint32_t preview_width;
+static uint32_t preview_height;
+
 static bool next_tile() {
     if (tiles.current.x != tiles.count.x - 1) {
         ++tiles.current.x;
@@ -301,7 +305,7 @@ static void prepare_megakernel_raytracer_resources(scene const& scene) {
         create_gpu_only_buffer(vma_alloc, size_in_byte(scene.lights), {},
             vk::BufferUsageFlagBits::eStorageBuffer);
     megakernel_raytracer.preview_image = create_texture2d(device, vma_alloc,
-        compute_command_buffer, tiles.size.x, tiles.size.y, 1,
+        compute_command_buffer, preview_width, preview_height, 1,
         vk::Format::eR32G32B32A32Sfloat,
         {command_queues.graphics_queue_idx, command_queues.compute_queue_idx},
         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage);
@@ -539,6 +543,8 @@ void megakernel_raytracer_initialize(render_options const& options) {
 }
 
 void megakernel_raytracer_prepare_data(scene const& scene) {
+    preview_width = win_width / PREVIEW_RATIO;
+    preview_height = win_height / PREVIEW_RATIO;
     prepare_megakernel_raytracer_resources(scene);
     prepare_rect_resources();
 }
@@ -582,12 +588,10 @@ void megakernel_raytracer_render(camera const& camera) {
         .layerCount = 1,
     };
     if (camera.dirty) {
+        bool const camera_start_moving = accumulation_counter != 0;
         accumulation_counter = 0;
         tiles.current.x = 0;
         tiles.current.y = 0;
-        uint32_t constexpr PREVIEW_RATIO = 5;
-        uint32_t preview_width = win_width / PREVIEW_RATIO;
-        uint32_t preview_height = win_height / PREVIEW_RATIO;
         megakernel_raytracer_pc const megakernel_raytracer_pc{
             .camera = get_glsl_raytracer_camera(
                 camera, preview_width, preview_height),
@@ -600,20 +604,13 @@ void megakernel_raytracer_render(camera const& camera) {
             (uint32_t) sizeof(megakernel_raytracer_pc),
             &megakernel_raytracer_pc);
         compute_command_buffer.dispatch(preview_width, preview_height, 1);
-        vk::ImageMemoryBarrier const preview_barrier{
-            .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
-            .dstAccessMask = vk::AccessFlagBits::eShaderRead,
-            .oldLayout = vk::ImageLayout::eGeneral,
-            .newLayout = vk::ImageLayout::eGeneral,
-            .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-            .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-            .image = megakernel_raytracer.preview_image.image,
-            .subresourceRange = whole_range,
-        };
-        graphics_command_buffer.pipelineBarrier(
-            vk::PipelineStageFlagBits::eComputeShader,
-            vk::PipelineStageFlagBits::eFragmentShader, {}, 0, nullptr, 0,
-            nullptr, 1, &preview_barrier);
+        if (camera_start_moving) {
+            add_submit_signal(vk::PipelineBindPoint::eCompute,
+                compute_semaphores[compute_sync_idx]);
+            add_submit_wait(vk::PipelineBindPoint::eGraphics,
+                compute_semaphores[compute_sync_idx],
+                vk::PipelineStageFlagBits::eFragmentShader);
+        }
     } else {
         if (accumulation_counter == 0 && tiles.current.x == 0 &&
             tiles.current.y == 0) {
@@ -734,8 +731,8 @@ void megakernel_raytracer_render(camera const& camera) {
         nullptr);
     bool const only_preview = accumulation_counter == 0;
     rect_pc const rect_pc{
-        .frame_scalar =
-            only_preview ? 1.0f : 1.0f / (float) accumulation_counter,
+        .frame_scalar = 1.0f,
+        // only_preview ? 1.0f : 1.0f / (float) accumulation_counter,
         .preview = only_preview,
     };
     graphics_command_buffer.pushConstants(rect.pipeline_layout,

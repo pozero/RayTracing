@@ -3,7 +3,7 @@
 
 struct stack_t {
     uint top;
-    uint data[64];
+    uint data[63];
 }; 
 
 void push_stack(inout stack_t stk, 
@@ -29,7 +29,7 @@ void clear_stack(inout stack_t stk) {
 
 struct vector_t {
     uint size;
-    uint data[16];
+    uint data[15];
 };
 
 void push_vector(inout vector_t vec,
