@@ -139,10 +139,17 @@ static struct {
                             // this image after all tiles get rendered
 } megakernel_raytracer;
 
+static uint32_t max_tracing_depth = 0;
+static uint32_t light_count = 0;
+static int32_t sky_light_idx = -1;
+
 struct megakernel_raytracer_pc {
     glsl_raytracer_camera camera;
     uint32_t random_seed;
     uint32_t preview;
+    uint32_t max_depth;
+    uint32_t light_count;
+    int32_t sky_light;
 };
 
 static struct {
@@ -266,6 +273,10 @@ static void destroy_megakernel_raytracer_pipeline() {
 
 static void prepare_megakernel_raytracer_resources(scene const& scene) {
     clean_megakernel_raytracer_resources();
+    light_count = (uint32_t) scene.lights.size();
+    sky_light_idx = scene.lights.back().type == light_type::sky ?
+                        (int32_t) scene.lights.size() - 1 :
+                        -1;
     bvh const bvh = create_bvh(scene);
     std::vector<glm::mat4> inverse_transformations{};
     inverse_transformations.reserve(scene.transformation.size());
@@ -522,6 +533,7 @@ void megakernel_raytracer_initialize(render_options const& options) {
     tiles.count.y = options.resolution_y / options.tile_height;
     tiles.size.x = options.tile_width;
     tiles.size.y = options.tile_height;
+    max_tracing_depth = options.max_depth;
     primary_descriptor_pool = create_descriptor_pool(device);
     indexing_descriptor_pool = create_descriptor_pool(
         device, vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind);
@@ -597,6 +609,8 @@ void megakernel_raytracer_render(camera const& camera) {
                 camera, preview_width, preview_height),
             .random_seed = rand_uint(),
             .preview = 1,
+            .max_depth = max_tracing_depth,
+            .sky_light = sky_light_idx,
         };
         compute_command_buffer.pushConstants(
             megakernel_raytracer.pipeline_layout,
@@ -639,6 +653,8 @@ void megakernel_raytracer_render(camera const& camera) {
                 camera, swapchain_extent.width, swapchain_extent.height),
             .random_seed = rand_uint(),
             .preview = 0,
+            .max_depth = max_tracing_depth,
+            .sky_light = sky_light_idx,
         };
         compute_command_buffer.pushConstants(
             megakernel_raytracer.pipeline_layout,
@@ -731,8 +747,8 @@ void megakernel_raytracer_render(camera const& camera) {
         nullptr);
     bool const only_preview = accumulation_counter == 0;
     rect_pc const rect_pc{
-        .frame_scalar = 1.0f,
-        // only_preview ? 1.0f : 1.0f / (float) accumulation_counter,
+        .frame_scalar =
+            only_preview ? 1.0f : 1.0f / (float) accumulation_counter,
         .preview = only_preview,
     };
     graphics_command_buffer.pushConstants(rect.pipeline_layout,

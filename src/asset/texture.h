@@ -4,8 +4,8 @@
 #include <string_view>
 
 enum class texture_channel {
-    rgb,
-    rgba,
+    rgb = 3,
+    rgba = 4,
 };
 
 enum class texture_format {

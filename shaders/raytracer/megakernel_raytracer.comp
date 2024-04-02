@@ -7,6 +7,9 @@ layout(push_constant, std430) uniform PUSH_CONSTANT {
     float packed_camera[12];
     uint random_seed;
     uint preview;
+    uint max_depth;
+    uint light_count;
+    int sky_light;
 };
 
 uint seed = random_seed;
@@ -21,6 +24,7 @@ uint seed = random_seed;
 #include "bvh.glsl"
 #include "ray.glsl"
 #include "camera.glsl"
+#include "sampling.glsl"
 
 layout(std430, set = 0, binding = 0) readonly buffer TLAS {
     bvh_node_t tlas[];
@@ -66,6 +70,52 @@ layout(rgba32f, set = 3, binding = 0) uniform image2D out_img[2];
 
 layout(set = 3, binding = 1) uniform sampler2D textures[];
 
+triangle_t unpack_triangle(const in uint idx);
+
+void get_surface_info(inout state_t state,
+                      out surface_info_t surface_info);
+
+vec4 sample_light(const in ray_t ray,
+                  const in state_t state,
+                  const in bool is_surface);
+
+bool closest_hit(const in ray_t ray,
+                 inout state_t state);
+
+bool any_hit(const in ray_t ray,
+             const in float t_max);
+
+vec3 ray_trace(in ray_t ray);
+
+bool sample_sky_light(const in ray_t ray,
+                      out vec4 color_pdf);
+
+void main() {
+    const camera_t camera = unpack_camera(packed_camera);
+    const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
+    const uint flat_tex_coord = imageSize(out_img[preview]).x * tex_coord.y + tex_coord.x;
+    random_seed_hash_combine(flat_tex_coord);
+    const vec3 pixel = camera.upper_left_pixel + 
+        tex_coord.x * camera.pixel_delta_u + 
+        tex_coord.y * camera.pixel_delta_v;
+    const float sample_offset_x = -0.5 + rand_01();
+    const float sample_offset_y = -0.5 + rand_01();
+    const vec3 pixel_sample_offset = sample_offset_x * camera.pixel_delta_u + 
+                                     sample_offset_y * camera.pixel_delta_v;
+    const vec3 pixel_sample = pixel + pixel_sample_offset;
+    const ray_t ray = ray_t(camera.position, normalize(pixel_sample - camera.position));
+    state_t state;
+    bool hit = closest_hit(ray, state);
+    const vec3 color = hit ? (state.inst_light >= 0 ? lights[state.inst_light].intensity :
+        materials[state.inst_material].albedo) : vec3(0.0);
+    if (preview == 1) {
+        imageStore(out_img[1], tex_coord, vec4(color, 1.0));
+    } else {
+        const vec3 accumulated = imageLoad(out_img[0], tex_coord).xyz;
+        imageStore(out_img[0], tex_coord, vec4(accumulated + color, 1.0));
+    }
+}
+
 triangle_t unpack_triangle(const in uint idx) {
     const vertex_t a = unpack_vertex(packed_triangles[idx * 6 + 0],
                                      packed_triangles[idx * 6 + 1]);
@@ -74,6 +124,72 @@ triangle_t unpack_triangle(const in uint idx) {
     const vertex_t c = unpack_vertex(packed_triangles[idx * 6 + 4],
                                      packed_triangles[idx * 6 + 5]);
     return triangle_t(a, b, c);
+}
+
+void get_surface_info(inout state_t state,
+                      out surface_info_t surface_info) {
+    surface_info = empty_surface_info();
+    if (state.inst_light >= 0) {
+        const light_t light = lights[state.inst_light];
+        if (state.front_face || light.type == LIGHT_AREA_DOUBLE_SIDED) {
+            surface_info.emission = light.intensity;
+            if (light.emission_tex >= 0) {
+                surface_info.emission *= texture(textures[light.emission_tex], state.hit_uv).rgb;
+            }
+        } else {
+            surface_info.emission = vec3(0.0);
+        }
+    } else if (state.inst_material >= 0) {
+        const material_t material = materials[state.inst_material];
+        surface_info.albedo = material.albedo;
+        surface_info.emission = material.emission;
+        surface_info.metallic = material.metallic;
+        surface_info.spec_trans = material.spec_trans;
+        surface_info.eta = state.front_face ? 1.0 / material.ior : material.ior;
+        surface_info.ior = material.ior;
+        surface_info.subsurface = material.subsurface;
+        surface_info.roughness = material.roughness;
+        surface_info.specular_tint = material.specular_tint;
+        surface_info.anisotropic = material.anisotropic;
+        surface_info.sheen = material.sheen;
+        surface_info.sheen_tint = material.sheen_tint;
+        surface_info.clearcoat = material.clearcoat;
+        surface_info.clearcoat_gloss = material.clearcoat_gloss;
+        if (material.albedo_tex >= 0) {
+            surface_info.albedo *= texture(textures[material.albedo_tex], state.hit_uv).rgb;
+        }
+        if (material.emission_tex >= 0) {
+            surface_info.emission *= texture(textures[material.emission_tex], state.hit_uv).rgb;
+        }
+        if (material.normal_tex >= 0) {
+            const vec3 normal_texel = normalize(texture(textures[material.normal_tex], state.hit_uv).rgb * 2.0 - 
+                                                vec3(1.0));
+            state.hit_normal = normalize(normal_texel.x * state.hit_tangent +
+                                         normal_texel.y * state.hit_bitangent +
+                                         normal_texel.z * state.hit_normal);
+        }
+        if (material.metallic_roughness_tex >= 0) {
+            const vec2 mr_texel = texture(textures[material.metallic_roughness_tex], state.hit_uv).bg;
+            surface_info.metallic = mr_texel.x;
+            surface_info.roughness = max(mr_texel.y * mr_texel.y, 0.001);
+        }
+        const float aspect = sqrt(1.0 - material.anisotropic * 0.9);
+        surface_info.ax = max(0.001, material.roughness / aspect);
+        surface_info.ay = max(0.001, material.roughness * aspect);
+    }
+}
+
+vec4 sample_light(const in ray_t ray) {
+    vec3 Li = vec3(0.0);
+    float pdf = 1.0 / light_count;
+    vec4 color_pdf = vec4()
+    const uint light_idx = rand_uint(0, light_count - 1);
+    const light_t light = lights[light_idx];
+    if (light.type == LIGHT_SKY) {
+        return sample_sky_light();
+    } else if (light.type == LIGHT_DISTANT) {
+    } else {
+    }
 }
 
 bool closest_hit(const in ray_t ray,
@@ -207,7 +323,6 @@ bool closest_hit(const in ray_t ray,
     return true;
 }
 
-
 bool any_hit(const in ray_t ray,
              const in float t_max) {
     const float t_min = 0.0;
@@ -288,23 +403,62 @@ bool any_hit(const in ray_t ray,
     return false;
 }
 
-void main() {
-    const camera_t camera = unpack_camera(packed_camera);
-    const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
-    const uint flat_tex_coord = imageSize(out_img[preview]).x * tex_coord.y + tex_coord.x;
-    random_seed_hash_combine(flat_tex_coord);
-    const vec3 pixel = camera.upper_left_pixel + 
-        tex_coord.x * camera.pixel_delta_u + 
-        tex_coord.y * camera.pixel_delta_v;
-    const float sample_offset_x = -0.5 + rand_01();
-    const float sample_offset_y = -0.5 + rand_01();
-    const vec3 pixel_sample_offset = sample_offset_x * camera.pixel_delta_u + 
-                                     sample_offset_y * camera.pixel_delta_v;
-    const vec3 pixel_sample = pixel + pixel_sample_offset;
-    ray_t ray = ray_t(camera.position, normalize(pixel_sample - camera.position));
+bool sample_sky_light(const in ray_t ray,
+                      out vec4 color_pdf,
+                      ) {
+    // if (sky_light < 0) {
+    //     return false;
+    // }
+    // const light_t sky = lights[sky_light];
+    // if (sky.emission_tex < 0) {
+    //     color_pdf = vec4(sky.intensity, 0.0f);
+    // } else {
+    //     const float theta = acos(clamp(ray.direction.y, -1.0, 1.0));
+    //     const vec2 uv = vec2((PI + atan(ray.direction.z, ray.direction.x)) * TWO_OVER_PI,
+    //                          theta * ONE_OVER_PI);
+    //     const vec3 color = sky.intensity * texture(textures[sky.emission_tex], uv).rgb;
+    //     const float total_luminance = sky.direction.x;
+    //     const uvec2 tex_size = uvec2(sky.direction.yz);
+    //     const float pdf = ((luminance(color) / total_luminance) * tex_size.x * tex_size.y) /  
+    //         (TWO_PI * PI * sin(theta));
+    //     color_pdf = vec4(color, pdf);
+    // }
+    // return true;
+}
+
+#define SCATTER_ON_SURFACE 0
+#define SCATTER_IN_MEDIUM 1
+
+vec3 ray_trace(in ray_t ray) {
+    vec3 radiance = vec3(0.0);
+    vec3 throughput = vec3(1.0);
     state_t state;
-    bool hit = closest_hit(ray, state);
-    const vec3 color = hit ? (state.inst_light >= 0 ? lights[state.inst_light].intensity :
-        materials[state.inst_material].albedo) : vec3(0.0);
-    imageStore(out_img[preview], tex_coord, vec4(color, 1.0));
+    surface_info_t surface_info;
+    scatter_sample_t scatter_sample;
+    int cur_medium = -1;
+    int scatter = -1;
+    for (uint depth = 0; ; ++ depth) {
+        bool hit_any = closest_hit(ray, state);
+        if (!hit_any) {
+            vec4 sky_color_pdf;
+            if (sample_sky_light(ray, sky_color_pdf)) {
+                const float mis = (scatter == SCATTER_ON_SURFACE && depth > 0) ?
+                    power_heuristic(scatter_sample.pdf, sky_color_pdf.w) : 1.0f;
+                radiance += mis * sky_color_pdf.rgb * throughput;
+            }
+            break;
+        }
+        get_surface_info(state, surface_info);
+        radiance += surface_info.emission * throughput;
+        if (depth == max_depth || state.inst_light >= 0) {
+            break;
+        }
+        if (cur_medium >= 0) {
+        }
+        if (scatter != SCATTER_IN_MEDIUM) {
+            scatter = SCATTER_ON_SURFACE;
+            // next event estimation
+        }
+    }
+    return radiance;
 }

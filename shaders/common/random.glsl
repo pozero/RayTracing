@@ -9,6 +9,13 @@ void random_seed_hash_combine(const in uint v) {
     seed = v + 0x9e3779b9 + (seed<<6) + (seed>>2);
 }
 
+uint rand_uint(const in uint min,
+               const in uint max) {
+    seed = random_seed_step(seed);
+    const uint range = max - min + 1;
+    return min + seed % range;
+}
+
 float rand_01() {
     seed = random_seed_step(seed);
     uint word = ((seed >> ((seed >> 28) + 4)) ^ seed) * 277803737;

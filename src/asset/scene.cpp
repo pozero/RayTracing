@@ -15,6 +15,22 @@
 
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 
+inline float luminance(float r, float g, float b) {
+    return 0.212671f * r + 0.715160f * g + 0.072169f * b;
+}
+
+inline float unorm_to_float(unsigned char c) {
+    return (float) c / 255.0f;
+}
+
+inline float triangle_area(vertex const& a, vertex const& b, vertex const& c) {
+    glm::vec3 const e1 =
+        glm::vec3{b.position_texu} - glm::vec3{a.position_texu};
+    glm::vec3 const e2 =
+        glm::vec3{c.position_texu} - glm::vec3{a.position_texu};
+    return 0.5f * glm::length(glm::cross(e1, e2));
+}
+
 std::tuple<render_options, camera, scene> load_scene(
     std::string_view file_path) {
     try {
@@ -272,6 +288,7 @@ std::tuple<render_options, camera, scene> load_scene(
                     };
                     transform *= glm::toMat4(quaterion);
                 }
+                float area_scale = 1.0f;
                 if (val.contains("/scale"_json_pointer)) {
                     glm::vec3 const scale{
                         val.at("/scale/0"_json_pointer),
@@ -279,12 +296,26 @@ std::tuple<render_options, camera, scene> load_scene(
                         val.at("/scale/2"_json_pointer),
                     };
                     transform = glm::scale(transform, scale);
+                    area_scale = scale.x * scale.y * scale.z;
                 }
+                uint32_t const vertex_start = scene.mesh_vertex_start[mesh];
+                uint32_t const vertex_count =
+                    (mesh == scene.mesh_vertex_start.size() - 1) ?
+                        (uint32_t) scene.vertices.size() - vertex_start :
+                        scene.mesh_vertex_start[mesh + 1] - vertex_start;
+                float total_area = 0.0f;
+                for (uint32_t t = vertex_start / 3;
+                     t < (vertex_start + vertex_count) / 3; ++t) {
+                    total_area += triangle_area(scene.vertices.at(3 * t + 0),
+                        scene.vertices.at(3 * t + 1),
+                        scene.vertices.at(3 * t + 2));
+                }
+                total_area *= area_scale;
                 scene.transformation.push_back(transform);
                 light const light{
                     .intensity = intensity,
                     .emission_tex = emission_id,
-                    .direction = {},
+                    .direction = {total_area, 0.0f, 0.0f},
                     .type = two_sided ? light_type::area_double_sided :
                                         light_type::area_single_sided,
                     .mesh = mesh,
@@ -326,13 +357,37 @@ std::tuple<render_options, camera, scene> load_scene(
                 root_json.value<std::string>(
                     "/sky_light/environment_tex"_json_pointer, "");
             int32_t environment_tex = -1;
+            float total_luminance = 0.0f;
+            uint32_t tex_width = 0;
+            uint32_t tex_height = 0;
             if (!environment_map_file.empty()) {
                 environment_tex = get_texture(environment_map_file);
+                texture_data const& tex_data = scene.textures.back();
+                tex_width = tex_data.width;
+                tex_height = tex_data.height;
+                if (tex_data.format == texture_format::sfloat) {
+                    float const* const p = (float const*) tex_data.data;
+                    for (uint32_t i = 0; i < tex_data.width * tex_data.height;
+                         i += (uint32_t) tex_data.channel) {
+                        total_luminance +=
+                            luminance(p[i + 0], p[i + 1], p[i + 2]);
+                    }
+                } else {
+                    unsigned char const* const p =
+                        (unsigned char const*) tex_data.data;
+                    for (uint32_t i = 0; i < tex_data.width * tex_data.height;
+                         i += (uint32_t) tex_data.channel) {
+                        float const r = unorm_to_float(p[i + 0]);
+                        float const g = unorm_to_float(p[i + 1]);
+                        float const b = unorm_to_float(p[i + 2]);
+                        total_luminance += luminance(r, g, b);
+                    }
+                }
             }
             light const sky{
                 .intensity = intensity,
                 .emission_tex = environment_tex,
-                .direction = glm::vec3{0.0f},
+                .direction = glm::vec3{total_luminance, tex_width, tex_height},
                 .type = light_type::sky,
             };
             scene.lights.push_back(sky);

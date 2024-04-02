@@ -1,8 +1,4 @@
 struct state_t {
-    vec3 radiance;
-    vec3 throughput;
-    vec3 ray_origin;
-    vec3 ray_direction;
     vec3 hit_position;
     vec3 hit_normal;
     vec3 hit_tangent;
@@ -10,7 +6,6 @@ struct state_t {
     vec2 hit_uv;
     float hit_t;
     int inst_material;
-    // doesn't support stack of mediums now
     int inst_medium;
     int inst_light;
     bool front_face;
@@ -27,14 +22,37 @@ struct surface_info_t {
     float roughness;
     float specular_tint;
     float anisotropic;
+    float ax;
+    float ay;
     float sheen;
     float sheen_tint;
     float clearcoat;
     float clearcoat_gloss;
 };
 
-// struct scatter_sample {
-// };
-// 
-// struct light_sample {
-// };
+surface_info_t empty_surface_info() {
+    return surface_info_t(
+        vec3(0.0),
+        vec3(0.0),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+    );
+}
+
+struct scatter_sample_t {
+    vec3 L;
+    vec3 f;
+    float pdf;
+};
