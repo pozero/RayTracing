@@ -2,7 +2,7 @@
     "renderer": {
         "resolution": [1280, 720],
         "max_depth": 5,
-        "tile": [256, 144]
+        "tile": [320, 180]
     },
     "camera": {
         "lookfrom": [-15.0, 15.0, 0.0],
@@ -15,11 +15,6 @@
             "roughness": 0.001,
             "clearcoat": 1.0,
             "clearcoat_gloss": 1.0
-        },
-        "black": {
-            "albedo": [0.0, 0.0, 0.0],
-            "roughness": 0.001,
-            "metallic": 0.01
         },
         "glass": {
             "albedo": [1.0, 1.0, 1.0],

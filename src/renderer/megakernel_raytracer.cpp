@@ -565,6 +565,7 @@ void megakernel_raytracer_update_data(scene const&) {
 }
 
 void megakernel_raytracer_render(camera const& camera) {
+    fmt::println("\rAccumualtion count: {}", accumulation_counter);
     vk::Result result;
     auto const [compute_command_buffer, compute_sync_idx] =
         get_command_buffer(vk::PipelineBindPoint::eCompute);
@@ -705,11 +706,6 @@ void megakernel_raytracer_render(camera const& camera) {
                 vk::ImageLayout::eGeneral,
                 megakernel_raytracer.output_image.image,
                 vk::ImageLayout::eGeneral, 1, &image_copy);
-            add_submit_signal(vk::PipelineBindPoint::eCompute,
-                compute_semaphores[compute_sync_idx]);
-            add_submit_wait(vk::PipelineBindPoint::eGraphics,
-                compute_semaphores[compute_sync_idx],
-                vk::PipelineStageFlagBits::eFragmentShader);
         }
     }
     // rect

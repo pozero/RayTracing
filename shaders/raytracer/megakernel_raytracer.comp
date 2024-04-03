@@ -71,6 +71,9 @@ layout(rgba32f, set = 3, binding = 0) uniform image2D out_img[2];
 
 layout(set = 3, binding = 1) uniform sampler2D textures[];
 
+void get_surface_info(inout state_t state,
+                      out surface_info_t surface_info);
+
 bool closest_hit(const in ray_t ray,
                  inout state_t state);
 
@@ -92,9 +95,10 @@ void main() {
     const vec3 pixel_sample = pixel + pixel_sample_offset;
     const ray_t ray = ray_t(camera.position, normalize(pixel_sample - camera.position));
     state_t state;
+    surface_info_t surface_info;
     bool hit = closest_hit(ray, state);
-    const vec3 color = hit ? (state.inst_light >= 0 ? lights[state.inst_light].intensity :
-        materials[state.inst_material].albedo) : vec3(0.0);
+    get_surface_info(state, surface_info);
+    const vec3 color = surface_info.albedo;
     if (preview == 1) {
         imageStore(out_img[1], tex_coord, vec4(color, 1.0));
     } else {
@@ -164,68 +168,6 @@ void get_surface_info(inout state_t state,
         surface_info.ax = max(0.001, material.roughness / aspect);
         surface_info.ay = max(0.001, material.roughness * aspect);
     }
-}
-
-bool sample_light(const in ray_t ray,
-                  const in vec3 position,
-                  out light_sample_t light_sample) {
-    const float light_pdf = 1.0 / light_count;
-    const light_t light = lights[rand_uint(0, light_count - 1)];
-    const float infinity_light_t_max = INFINITY - EPSILON;
-    if (light.type == LIGHT_SKY) {
-        const float r0 = rand_01();
-        const float r1 = rand_01();
-        const float cos_theta = 1 - 2 * r0;
-        const float sin_theta = sqrt(1 - square(cos_theta));
-        const float phi = TWO_PI * r1;
-        const vec3 direciton = 
-            vec3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
-        const ray_t shadow_ray = ray_t(position, ray.direction);
-        if (any_hit(shadow_ray, infinity_light_t_max)) {
-            return false;
-        }
-        const vec2 uv = vec2(r1, acos(cos_theta) * ONE_OVER_PI);
-        const bool textured_sky = light.emission_tex >= 0;
-        light_sample.intensity = textured_sky ?
-            light.intensity * texture(textures[light.emission_tex], uv).rgb :
-            light.intensity;
-        light_sample.pdf = light_pdf * ONE_OVER_FOUR_PI;
-        light_sample.wi = shadow_ray.direction;
-    } else if (light.type == LIGHT_DISTANT) {
-        const ray_t shadow_ray = ray_t(position, -normalize(light.direction));
-        if (any_hit(shadow_ray, infinity_light_t_max)) {
-            return false;
-        }
-        light_sample.intensity = light.intensity;
-        light_sample.pdf = 0.0;
-        light_sample.wi = shadow_ray.direction;
-    } else {
-        const mesh_t mesh = meshes[light.mesh];
-        const uint ti = mesh.triangle_offset + rand_uint(0, mesh.triangle_count - 1);
-        const triangle_t triangle = unpack_triangle(ti);
-        const vec3 barycentric = uniform_sampling_triangle();
-        const vec3 light_sample_position = 
-            barycentric.x * triangle.a.position +
-            barycentric.y * triangle.b.position +
-            barycentric.z * triangle.c.position;
-        const vec3 light_to_frag = light_sample_position - position;
-        const ray_t shadow_ray = ray_t(position, normalize(light_to_frag));
-        if (any_hit(shadow_ray, length(light_to_frag) - EPSILON)) {
-            return false;
-        }
-        vec3 intensity = light.intensity;
-        if (light.emission_tex >= 0) {
-            const vec2 uv = barycentric.x * triangle.a.tex_coord +
-                            barycentric.y * triangle.b.tex_coord +
-                            barycentric.z * triangle.c.tex_coord;
-            intensity *= texture(textures[light.emission_tex], uv).rgb;
-        }
-        const float pdf_on_light = 1.0 / light.direction.x;
-        light_sample.intensity = intensity;
-        light_sample.pdf = light_pdf * pdf_on_light;
-        light_sample.wi = shadow_ray.direction;
-    }
-    return true;
 }
 
 bool closest_hit(const in ray_t ray,
@@ -344,8 +286,7 @@ bool closest_hit(const in ray_t ray,
     // transform to world space
     if (instance.transform >= 0) {
         const mat4 transform = transforms[instance.transform];
-        const mat4 inverse_transform = inverse_transforms[instance.transform];
-        state.hit_normal = normalize(transpose(mat3(inverse_transform)) * state.hit_normal);
+        state.hit_normal = normalize(transpose(inverse(mat3(transform))) * state.hit_normal);
         state.hit_tangent = normalize(mat3(transform) * state.hit_tangent);
         state.hit_bitangent = normalize(mat3(transform) * state.hit_bitangent);
     }
@@ -437,64 +378,4 @@ bool any_hit(const in ray_t ray,
         }
     }
     return false;
-}
-
-bool sample_sky_light(const in ray_t ray,
-                      out light_sample_t light_sample) {
-    if (sky_light < 0) {
-        return false;
-    }
-    const light_t sky = lights[sky_light];
-    light_sample.wi = ray.direction;
-    if (sky.emission_tex < 0) {
-        light_sample.intensity = sky.intensity;
-        light_sample.pdf = 0.0;
-    } else {
-        const float theta = acos(clamp(ray.direction.y, -1.0, 1.0));
-        const vec2 uv = vec2((PI + atan(ray.direction.z, ray.direction.x)) * TWO_OVER_PI,
-            theta * ONE_OVER_PI);
-        light_sample.intensity = 
-            sky.intensity * texture(textures[sky.emission_tex], uv).rgb;
-        const float total_luminance = sky.direction.x;
-        const vec2 tex_size = sky.direction.yz;
-        const float padded_sin_theta = pad_above_zero(sin(theta));
-        light_sample.pdf = 
-            ((luminance(sky.intensity) / total_luminance) * tex_size.x * tex_size.y) /
-            (TWO_PI * PI * padded_sin_theta);
-    }
-    return true;
-}
-
-// #define SCATTER_ON_SURFACE 0
-// #define SCATTER_IN_MEDIUM 1
-
-// TODO: Add support for medium
-vec3 ray_trace(in ray_t ray) {
-    vec3 radiance = vec3(0.0);
-    vec3 throughput = vec3(1.0);
-    state_t state;
-    surface_info_t surface_info;
-    scatter_sample_t scatter_sample;
-    light_sample_t light_sample;
-    for (uint depth = 0; ; ++ depth) {
-        bool hit_any = closest_hit(ray, state);
-        if (!hit_any) {
-            if (sample_sky_light(ray, light_sample)) {
-                const float mis = depth > 0 ?
-                    power_heuristic(scatter_sample.pdf, light_sample.pdf) : 1.0f;
-                radiance += mis * light_sample.intensity * throughput;
-            }
-            break;
-        }
-        get_surface_info(state, surface_info);
-        const vec3 front_face_normal = get_front_face_normal(state);
-        radiance += surface_info.emission * throughput;
-        if (depth == max_depth || state.inst_light >= 0) {
-            break;
-        }
-        // next event estimation
-        if (sample_light(ray, state.hit_position, light_sample)) {
-        }
-    }
-    return radiance;
 }

@@ -4,7 +4,7 @@
 #define ONE_OVER_PI (1.0 / PI)
 #define TWO_OVER_PI (2.0 / PI)
 #define ONE_OVER_FOUR_PI (1.0 / (4.0 * PI))
-#define INFINITY 1.0 / 0.0
+#define INFINITY 1.0 / 0.00000000000001
 #define EPSILON 0.0001
 
 float pad_above_zero(const in float val) {
@@ -14,7 +14,7 @@ float pad_above_zero(const in float val) {
 }
 
 float luminance(const in vec3 c) {
-    return 0.212671 * c.r + 0.715160 * c.b + 0.072169 * c.b;
+    return 0.212671 * c.x + 0.715160 * c.y + 0.072169 * c.z;
 }
 
 struct stack_t {
@@ -54,12 +54,8 @@ void push_vector(inout vector_t vec,
     ++ vec.size;
 }
 
-vec3 unpack_vec3(const in float array[3]) {
-    return vec3(array[0], array[1], array[2]);
-}
-
 float square(const in float val) {
-    return val;
+    return val * val;
 }
 
 float pow5(const in float val) {

@@ -55,14 +55,9 @@ surface_info_t empty_surface_info() {
     );
 }
 
-struct scatter_sample_t {
-    vec3 L;
-    vec3 f;
-    float pdf;
-};
-
 struct light_sample_t {
     vec3 intensity;
     float pdf;
     vec3 wi;
+    int type;
 };

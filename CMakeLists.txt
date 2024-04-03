@@ -141,11 +141,7 @@ file(GLOB_RECURSE
         "${PROJECT_SOURCE_DIR}/shaders/*.frag"
         "${PROJECT_SOURCE_DIR}/shaders/*.vert"
         "${PROJECT_SOURCE_DIR}/shaders/*.comp"
-)
-
-file(GLOB_RECURSE
-    GLSL_INCLUDE_FILES
-        "${PROJECT_SOURCE_DIR}/shaders/*.glsl"
+        # "${PROJECT_SOURCE_DIR}/shaders/*.glsl"
 )
 
 foreach(GLSL ${GLSL_SOURCE_FILES})
@@ -161,7 +157,6 @@ endforeach(GLSL)
 
 add_custom_target(compile_shaders
     DEPENDS ${SPIRV_BINARY_FILES}
-    DEPENDS ${GLSL_INCLUDE_FILES}
 )
 
 add_dependencies(Raytracing compile_shaders)
