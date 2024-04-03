@@ -11,6 +11,10 @@ struct state_t {
     bool front_face;
 };
 
+vec3 get_front_face_normal(const in state_t state) {
+    return state.front_face ? state.hit_normal : -state.hit_normal;
+}
+
 struct surface_info_t {
     vec3 albedo;
     vec3 emission;
@@ -55,4 +59,10 @@ struct scatter_sample_t {
     vec3 L;
     vec3 f;
     float pdf;
+};
+
+struct light_sample_t {
+    vec3 intensity;
+    float pdf;
+    vec3 wi;
 };

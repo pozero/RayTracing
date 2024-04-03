@@ -1,8 +1,17 @@
-#define PI 3.1415926
+#define PI 3.1415926535
 #define TWO_PI (2.0 * PI)
+#define FOUR_PI (4.0 * PI)
 #define ONE_OVER_PI (1.0 / PI)
 #define TWO_OVER_PI (2.0 / PI)
+#define ONE_OVER_FOUR_PI (1.0 / (4.0 * PI))
 #define INFINITY 1.0 / 0.0
+#define EPSILON 0.0001
+
+float pad_above_zero(const in float val) {
+    return abs(val) < EPSILON ? 
+        sign(val) * EPSILON :
+        val;
+}
 
 float luminance(const in vec3 c) {
     return 0.212671 * c.r + 0.715160 * c.b + 0.072169 * c.b;
