@@ -403,7 +403,7 @@ vec3 ray_trace(in ray_t ray) {
         if (depth == max_depth) {
             break;
         }
-        const vec3 next_direction = normalize(sample_disney(state, surface_info, ray.direction));
+        const vec3 next_direction = sample_disney(state, surface_info, ray.direction);
         const vec4 bsdf_pdf = eval_disney(state, surface_info, ray.direction, next_direction);
         if (bsdf_pdf.w > 0.0) {
             throughput *= bsdf_pdf.xyz / bsdf_pdf.w;
