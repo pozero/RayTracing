@@ -62,3 +62,11 @@ float pow5(const in float val) {
     const float squared = square(val);
     return square(squared) * val;
 }
+
+void onb(const in vec3 N, 
+         inout vec3 T, 
+         inout vec3 B) {
+    const vec3 up = abs(N.z) < 0.9999999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+    T = normalize(cross(up, N));
+    B = cross(N, T);
+}

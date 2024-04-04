@@ -71,6 +71,8 @@ layout(rgba32f, set = 3, binding = 0) uniform image2D out_img[2];
 
 layout(set = 3, binding = 1) uniform sampler2D textures[];
 
+triangle_t unpack_triangle(const in uint idx);
+
 void get_surface_info(inout state_t state,
                       out surface_info_t surface_info);
 
@@ -79,6 +81,8 @@ bool closest_hit(const in ray_t ray,
 
 bool any_hit(const in ray_t ray,
              const in float t_max);
+
+vec3 ray_trace(in ray_t ray);
 
 void main() {
     const camera_t camera = unpack_camera(packed_camera);
@@ -94,11 +98,12 @@ void main() {
                                      sample_offset_y * camera.pixel_delta_v;
     const vec3 pixel_sample = pixel + pixel_sample_offset;
     const ray_t ray = ray_t(camera.position, normalize(pixel_sample - camera.position));
-    state_t state;
-    surface_info_t surface_info;
-    bool hit = closest_hit(ray, state);
-    get_surface_info(state, surface_info);
-    const vec3 color = surface_info.albedo;
+    // state_t state;
+    // surface_info_t surface_info;
+    // bool hit = closest_hit(ray, state);
+    // get_surface_info(state, surface_info);
+    // const vec3 color = surface_info.albedo;
+    const vec3 color = ray_trace(ray);
     if (preview == 1) {
         imageStore(out_img[1], tex_coord, vec4(color, 1.0));
     } else {
@@ -378,4 +383,35 @@ bool any_hit(const in ray_t ray,
         }
     }
     return false;
+}
+
+vec3 ray_trace(in ray_t ray) {
+    vec3 radiance = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+    state_t state;
+    surface_info_t surface_info;
+    for (uint depth = 0; ; ++ depth) {
+        const bool hit = closest_hit(ray, state);
+        if (!hit) {
+            break;
+        }
+        get_surface_info(state, surface_info);
+        radiance += surface_info.emission * throughput;
+        if (state.inst_light >= 0) {
+            break;
+        }
+        if (depth == max_depth) {
+            break;
+        }
+        const vec3 next_direction = normalize(sample_disney(state, surface_info, ray.direction));
+        const vec4 bsdf_pdf = eval_disney(state, surface_info, ray.direction, next_direction);
+        if (bsdf_pdf.w > 0.0) {
+            throughput *= bsdf_pdf.xyz / bsdf_pdf.w;
+        } else {
+            break;
+        }
+        ray.direction = next_direction;
+        ray.origin = state.hit_position + next_direction * EPSILON;
+    }
+    return radiance;
 }

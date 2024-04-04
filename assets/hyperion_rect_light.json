@@ -27,6 +27,12 @@
             "metallic": 1.0,
             "roughness": 0.001
         },
+        "aniso_silver": {
+            "albedo": [0.9, 0.9, 0.9],
+            "metallic": 1.0,
+            "anisotropic": 0.5,
+            "roughness": 0.3
+        },
         "ring_silver": {
             "albedo": [1.0, 1.0, 1.0],
             "metallic": 1.0,
