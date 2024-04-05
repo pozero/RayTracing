@@ -50,7 +50,8 @@ bvh create_bvh(scene const& scene) {
     }
     for (uint32_t l = 0; l < scene.lights.size(); ++l) {
         light const& light = scene.lights[l];
-        if (light.type == light_type::distant) {
+        if (light.type == light_type::distant ||
+            light.type == light_type::sky) {
             continue;
         }
         aabb const aabb = create_aabb(

@@ -4,7 +4,16 @@ float power_heuristic(const in float a,
     return a2 / (a2 + b * b);
 }
 
-vec3 uniform_sampling_triangle() {
+vec3 uniform_sample_sphere() {
+    const float r0 = rand_01();
+    const float r1 = rand_01();
+    const float cos_theta = 1 - 2.0 * r0;
+    const float sin_theta = sqrt(max(0.0, 1 - cos_theta * cos_theta));
+    const float phi = 2.0 * r1;
+    return vec3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+}
+
+vec3 uniform_sample_triangle() {
     const float r0 = rand_01();
     const float r1 = rand_01();
     float b0 = 0;

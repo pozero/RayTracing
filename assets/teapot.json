@@ -1,0 +1,41 @@
+{
+    "renderer": {
+        "resolution": [1280, 720],
+        "max_depth": 2,
+        "tile": [320, 180]
+    },
+    "camera": {
+        "lookfrom": [20, 12, 0],
+        "lookat": [-0.953633, 2.17253, -0.0972613],
+        "fov": 60.0
+    },
+    "sky_light": {
+        "intensity": [5.0, 5.0, 5.0],
+        "environment_tex": "HDR/sunset.hdr"
+    },
+    "material": {
+        "checker": {
+            "albedo": [1.0, 1.0, 1.0],
+            "albedo_tex": "teapot/checker.png",
+            "roughness": 0.5
+        },
+        "white": {
+            "albedo": [0.9, 0.9, 0.9],
+            "roughness": 0.0
+        }
+    },
+    "primitive": {
+        "teapot_part0": {
+            "mesh": "teapot/Mesh000.obj",
+            "material": "white"
+        },
+        "teapot_part1": {
+            "mesh": "teapot/Mesh001.obj",
+            "material": "white"
+        },
+        "floor": {
+            "mesh": "teapot/Mesh050.obj",
+            "material": "checker"
+        }
+    }
+}

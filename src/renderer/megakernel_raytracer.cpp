@@ -213,14 +213,6 @@ static void create_megakernel_raytracer_pipeline() {
     };
     vk::defaultDispatchLoaderDynamic.vkGetPhysicalDeviceProperties2(
         physical_device, &phy_dev_properties);
-    uint32_t const texture_array_size =
-        descriptor_indexing_properties
-            .maxDescriptorSetUpdateAfterBindSampledImages;
-    vk::DescriptorBindingFlags const texture_array_binding_flags =
-        vk::DescriptorBindingFlagBits::eVariableDescriptorCount |
-        vk::DescriptorBindingFlagBits::eUpdateAfterBind |
-        vk::DescriptorBindingFlagBits::ePartiallyBound |
-        vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
     std::array const bindings{
         std::vector<vk_descriptor_set_binding>{
                                                {vk::DescriptorType::eStorageBuffer, 1},
@@ -235,23 +227,34 @@ static void create_megakernel_raytracer_pipeline() {
                                                {vk::DescriptorType::eStorageBuffer, 1},
                                                {vk::DescriptorType::eStorageBuffer, 1},
                                                {vk::DescriptorType::eStorageBuffer, 1}},
-        std::vector<vk_descriptor_set_binding>{
-                                               {vk::DescriptorType::eStorageImage, 2},
-                                               {vk::DescriptorType::eCombinedImageSampler, texture_array_size,
-                texture_array_binding_flags}},
     };
-    for (uint32_t s = 0; s < MEGAKERNAL_RAYTRACER_SET; ++s) {
-        megakernel_raytracer
-            .descriptor_layouts[s] = create_descriptor_set_layout(device,
-            vk::ShaderStageFlagBits::eCompute, bindings[s],
-            s == 3 ?
-                vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool :
-                vk::DescriptorSetLayoutCreateFlagBits{0});
-        create_descriptor_set(device,
-            s == 3 ? indexing_descriptor_pool : primary_descriptor_pool,
+    uint32_t const texture_array_size =
+        descriptor_indexing_properties
+            .maxDescriptorSetUpdateAfterBindSampledImages;
+    vk::DescriptorBindingFlags const texture_array_binding_flags =
+        vk::DescriptorBindingFlagBits::eVariableDescriptorCount |
+        vk::DescriptorBindingFlagBits::eUpdateAfterBind |
+        vk::DescriptorBindingFlagBits::ePartiallyBound |
+        vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+    std::vector<vk_descriptor_set_binding> set_3_binding{
+        {vk::DescriptorType::eStorageImage, 2},
+        {vk::DescriptorType::eCombinedImageSampler, texture_array_size,
+         texture_array_binding_flags}
+    };
+    for (uint32_t s = 0; s < MEGAKERNAL_RAYTRACER_SET - 1; ++s) {
+        megakernel_raytracer.descriptor_layouts[s] =
+            create_descriptor_set_layout(
+                device, vk::ShaderStageFlagBits::eCompute, bindings[s]);
+        create_descriptor_set(device, primary_descriptor_pool,
             megakernel_raytracer.descriptor_layouts[s],
             megakernel_raytracer.descriptor_sets[s]);
     }
+    megakernel_raytracer.descriptor_layouts[3] = create_descriptor_set_layout(
+        device, vk::ShaderStageFlagBits::eCompute, set_3_binding,
+        vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool);
+    create_descriptor_set(device, indexing_descriptor_pool,
+        megakernel_raytracer.descriptor_layouts[3],
+        megakernel_raytracer.descriptor_sets[3]);
     std::array pc_sizes{(uint32_t) sizeof(megakernel_raytracer_pc)};
     std::array pc_stages{vk::ShaderStageFlagBits::eCompute};
     megakernel_raytracer.pipeline_layout = create_pipeline_layout(
@@ -329,11 +332,13 @@ static void prepare_megakernel_raytracer_resources(scene const& scene) {
     for (uint32_t t = 0; t < scene.textures.size(); ++t) {
         texture_data const& data = scene.textures[t];
         vk::Format const format = data.format == texture_format::unorm ?
-                                      vk::Format::eR8G8B8Unorm :
-                                      vk::Format::eR32G32B32Sfloat;
+                                      vk::Format::eR8G8B8A8Unorm :
+                                      vk::Format::eR32G32B32A32Sfloat;
         megakernel_raytracer.texture_array.push_back(
             create_texture2d(device, vma_alloc, graphics_command_buffer,
-                data.width, data.height, 1, format, {},
+                data.width, data.height, 1, format,
+                {command_queues.compute_queue_idx,
+                    command_queues.graphics_queue_idx},
                 vk::ImageUsageFlagBits::eSampled |
                     vk::ImageUsageFlagBits::eTransferDst));
     }
@@ -402,8 +407,8 @@ static void prepare_megakernel_raytracer_resources(scene const& scene) {
             .dstAccessMask = vk::AccessFlagBits::eShaderRead,
             .oldLayout = vk::ImageLayout::eGeneral,
             .newLayout = vk::ImageLayout::eGeneral,
-            .srcQueueFamilyIndex = command_queues.graphics_queue_idx,
-            .dstQueueFamilyIndex = command_queues.compute_queue_idx,
+            .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+            .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
             .image = megakernel_raytracer.texture_array[t].image,
             .subresourceRange = vk::ImageSubresourceRange{
                                                           .aspectMask = vk::ImageAspectFlagBits::eColor,

@@ -349,9 +349,9 @@ std::tuple<render_options, camera, scene> load_scene(
         }
         if (root_json.contains("/sky_light"_json_pointer)) {
             glm::vec3 const intensity{
-                root_json.at("/sky_light/intensity"_json_pointer),
-                root_json.at("/sky_light/intensity"_json_pointer),
-                root_json.at("/sky_light/intensity"_json_pointer),
+                root_json.at("/sky_light/intensity/0"_json_pointer),
+                root_json.at("/sky_light/intensity/1"_json_pointer),
+                root_json.at("/sky_light/intensity/2"_json_pointer),
             };
             std::string const& environment_map_file =
                 root_json.value<std::string>(

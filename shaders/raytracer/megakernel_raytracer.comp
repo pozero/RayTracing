@@ -380,6 +380,31 @@ bool any_hit(const in ray_t ray,
     return false;
 }
 
+vec4 eval_sky_light(const in ray_t ray) {
+    vec4 intensity_pdf = vec4(0.0);
+    if (sky_light < 0) {
+        return intensity_pdf;
+    }
+    const light_t sky = lights[sky_light];
+    if (sky.emission_tex < 0) {
+        intensity_pdf.xyz = sky.intensity;
+        intensity_pdf.w = ONE_OVER_FOUR_PI;
+    } else {
+        const float theta = acos(clamp(ray.direction.y, -1.0, 1.0));
+        const vec2 uv = vec2((PI + atan(ray.direction.z, ray.direction.x)) * TWO_OVER_PI,
+            theta * ONE_OVER_PI);
+        intensity_pdf.xyz = 
+            sky.intensity * texture(textures[sky.emission_tex], uv).rgb;
+        const float total_luminance = sky.direction.x;
+        const vec2 tex_size = sky.direction.yz;
+        const float padded_sin_theta = pad_above_zero(sin(theta));
+        intensity_pdf.w = 
+            ((luminance(sky.intensity) / total_luminance) * tex_size.x * tex_size.y) /
+            (TWO_PI * PI * padded_sin_theta);
+    }
+    return intensity_pdf;
+}
+
 bool sample_light(const in ray_t ray,
                   const in vec3 position,
                   out light_sample_t light_sample) {
@@ -389,6 +414,16 @@ bool sample_light(const in ray_t ray,
     const float infinity_light_t_max = INFINITY - EPSILON;
     light_sample.type = light.type;
     if (light.type == LIGHT_SKY) {
+        const vec3 direction = uniform_sample_sphere();
+        const ray_t shadow_ray = ray_t(position, direction);
+        if (any_hit(shadow_ray, infinity_light_t_max)) {
+            return false;
+        }
+        const vec4 intensity_pdf = eval_sky_light(ray);
+        light_sample.intensity = intensity_pdf.xyz;
+        light_sample.pdf = intensity_pdf.w;
+        light_sample.wi = direction;
+        return true;
     } else if (light.type == LIGHT_DISTANT) {
     } else if (light.type == LIGHT_AREA_SINGLE_SIDED ||
                light.type == LIGHT_AREA_DOUBLE_SIDED) {
@@ -402,7 +437,7 @@ bool sample_light(const in ray_t ray,
             inverse(mat3(transform)) :
             mat3(1.0);
         const triangle_t triangle = unpack_triangle(triangle_i);
-        const vec3 tri_coord = uniform_sampling_triangle();
+        const vec3 tri_coord = uniform_sample_triangle();
         const vec3 light_sample_pos = vec3(transform * 
            vec4(tri_coord.x * triangle.a.position +
                 tri_coord.y * triangle.b.position +
@@ -450,6 +485,12 @@ vec3 ray_trace(in ray_t ray) {
     for (uint depth = 0; ; ++ depth) {
         const bool hit_any = closest_hit(ray, state);
         if (!hit_any) {
+            const vec4 intensity_pdf = eval_sky_light(ray);
+            if (intensity_pdf.w > 0.0) {
+                const float mis = depth > 0 ?
+                    power_heuristic(bsdf_pdf.w, intensity_pdf.w) : 1.0f;
+                radiance += mis * intensity_pdf.xyz * throughput;
+            }
             break;
         }
         get_surface_info(state, surface_info);

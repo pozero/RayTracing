@@ -9,7 +9,7 @@
 
 int main() {
     auto [render_options, camera, scene] =
-        load_scene(PATH_FROM_ROOT("assets/hyperion_rect_light.json"));
+        load_scene(PATH_FROM_ROOT("assets/teapot.json"));
     win_width = render_options.resolution_x;
     win_height = render_options.resolution_y;
     renderer renderer{};
