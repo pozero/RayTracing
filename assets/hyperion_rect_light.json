@@ -2,7 +2,7 @@
     "renderer": {
         "resolution": [1280, 720],
         "max_depth": 5,
-        "tile": [320, 180]
+        "tile": [256, 144]
     },
     "camera": {
         "lookfrom": [-15.0, 15.0, 0.0],

@@ -1,3 +1,24 @@
+float power_heuristic(const in float a,
+                      const in float b) {
+    const float a2 = a * a;
+    return a2 / (a2 + b * b);
+}
+
+vec3 uniform_sampling_triangle() {
+    const float r0 = rand_01();
+    const float r1 = rand_01();
+    float b0 = 0;
+    float b1 = 0;
+    if (r0 < r1) {
+        b0 = 0.5 * r0;
+        b1 = r1 - b0;
+    } else {
+        b1 = 0.5 * r1;
+        b0 = r0 - b1;
+    }
+    return vec3(b0, b1, (1 - b0 - b1));
+}
+
 vec3 cosine_sample_hemisphere() {
     const float r1 = rand_01();
     const float r2 = rand_01();

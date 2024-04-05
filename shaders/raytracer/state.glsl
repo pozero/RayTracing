@@ -61,3 +61,12 @@ struct light_sample_t {
     vec3 wi;
     int type;
 };
+
+light_sample_t empty_light_sample() {
+    return light_sample_t(
+        vec3(0.0),
+        0.0,
+        vec3(0.0),
+        -1
+    );
+}

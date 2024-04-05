@@ -380,11 +380,62 @@ bool any_hit(const in ray_t ray,
     return false;
 }
 
+bool sample_light(const in ray_t ray,
+                  const in vec3 position,
+                  out light_sample_t light_sample) {
+    light_sample = empty_light_sample();
+    const float light_pdf = 1.0 / light_count;
+    const light_t light = lights[rand_uint(0, light_count - 1)];
+    const float infinity_light_t_max = INFINITY - EPSILON;
+    light_sample.type = light.type;
+    if (light.type == LIGHT_SKY) {
+    } else if (light.type == LIGHT_DISTANT) {
+    } else {
+        const mesh_t mesh = meshes[light.mesh];
+        const uint triangle_i = mesh.triangle_offset +
+            rand_uint(0, mesh.triangle_count - 1);
+        const triangle_t triangle = unpack_triangle(triangle_i);
+        const vec3 tri_coord = uniform_sampling_triangle();
+        const vec3 light_sample_pos = tri_coord.x * triangle.a.position +
+            triangle.b.position +
+            triangle.c.position;
+        const vec3 light_sample_nor = tri_coord.x * triangle.a.normal +
+            tri_coord.y * triangle.b.normal +
+            tri_coord.z * triangle.c.normal;
+        const vec3 light_to_frag = light_sample_pos - position;
+        if (light.type != LIGHT_AREA_DOUBLE_SIDED &&
+            dot(light_to_frag, light_sample_nor) > 0.0) {
+            return false;
+        }
+        const float light_frag_dist = length(light_to_frag);
+        const float light_frag_dist2 = light_frag_dist * light_frag_dist;
+        const vec3 light_frag_direction = light_to_frag / light_frag_dist;
+        const ray_t shadow_ray = ray_t(position, light_frag_direction);
+        if (any_hit(shadow_ray, light_frag_dist - EPSILON)) {
+            return false;
+        }
+        vec3 intensity = light.intensity;
+        if (light.emission_tex >= 0) {
+            const vec2 uv = tri_coord.x * triangle.a.tex_coord +
+                tri_coord.y * triangle.b.tex_coord +
+                tri_coord.z * triangle.c.tex_coord;
+            intensity *= texture(textures[light.emission_tex], uv).rgb;
+        }
+        const float pdf_on_light = 1.0 / light.direction.x;
+        light_sample.intensity = intensity;
+        light_sample.pdf = light_pdf * pdf_on_light *
+            (light_frag_dist2 / abs(dot(light_sample_nor, light_frag_direction)));
+        light_sample.wi = shadow_ray.direction;
+    }
+    return true;
+}
+
 vec3 ray_trace(in ray_t ray) {
     vec3 radiance = vec3(0.0);
     vec3 throughput = vec3(1.0);
     state_t state;
     surface_info_t surface_info;
+    light_sample_t light_sample;
     for (uint depth = 0; ; ++ depth) {
         const bool hit_any = closest_hit(ray, state);
         if (!hit_any) {
@@ -397,6 +448,16 @@ vec3 ray_trace(in ray_t ray) {
         }
         if (depth == max_depth) {
             break;
+        }
+        const vec3 front_face_normal = get_front_face_normal(state);
+        const vec3 shadow_ray_origin = state.hit_position + EPSILON * front_face_normal;
+        if (sample_light(ray, shadow_ray_origin, light_sample)) {
+            const bool is_delta = light_sample.type == LIGHT_DISTANT;
+            const vec4 bsdf_pdf = eval_disney(state, surface_info, ray.direction, light_sample.wi);
+            if (bsdf_pdf.w > 0.0) {
+                const float mis = is_delta ? 1.0 : power_heuristic(light_sample.pdf, bsdf_pdf.w);
+                radiance += (mis * bsdf_pdf.xyz * light_sample.intensity / light_sample.pdf) * throughput;
+            }
         }
         const vec3 next_direction = sample_disney(state, surface_info, ray.direction);
         const vec4 bsdf_pdf = eval_disney(state, surface_info, ray.direction, next_direction);
