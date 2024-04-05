@@ -610,6 +610,7 @@ void megakernel_raytracer_render(camera const& camera) {
             .random_seed = rand_uint(),
             .preview = 1,
             .max_depth = max_tracing_depth,
+            .light_count = light_count,
             .sky_light = sky_light_idx,
         };
         compute_command_buffer.pushConstants(
@@ -654,6 +655,7 @@ void megakernel_raytracer_render(camera const& camera) {
             .random_seed = rand_uint(),
             .preview = 0,
             .max_depth = max_tracing_depth,
+            .light_count = light_count,
             .sky_light = sky_light_idx,
         };
         compute_command_buffer.pushConstants(
