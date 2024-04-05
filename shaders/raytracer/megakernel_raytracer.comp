@@ -98,11 +98,6 @@ void main() {
                                      sample_offset_y * camera.pixel_delta_v;
     const vec3 pixel_sample = pixel + pixel_sample_offset;
     const ray_t ray = ray_t(camera.position, normalize(pixel_sample - camera.position));
-    // state_t state;
-    // surface_info_t surface_info;
-    // bool hit = closest_hit(ray, state);
-    // get_surface_info(state, surface_info);
-    // const vec3 color = surface_info.albedo;
     const vec3 color = ray_trace(ray);
     if (preview == 1) {
         imageStore(out_img[1], tex_coord, vec4(color, 1.0));
@@ -391,8 +386,8 @@ vec3 ray_trace(in ray_t ray) {
     state_t state;
     surface_info_t surface_info;
     for (uint depth = 0; ; ++ depth) {
-        const bool hit = closest_hit(ray, state);
-        if (!hit) {
+        const bool hit_any = closest_hit(ray, state);
+        if (!hit_any) {
             break;
         }
         get_surface_info(state, surface_info);

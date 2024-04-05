@@ -60,11 +60,11 @@ vec4 eval_disney_diffuse(const in surface_info_t surface_info,
 
 float dielectric_fresnel(const in float cos_theta_i,
                          const in float eta) {
-    const float sin_thetatsq = eta * eta * (1.0f - cos_theta_i * cos_theta_i);
+    const float sin_theta_t2 = eta * eta * (1.0f - cos_theta_i * cos_theta_i);
     // Total internal reflection
-    if (sin_thetatsq > 1.0)
+    if (sin_theta_t2 > 1.0)
         return 1.0;
-    const float cos_theta_t = sqrt(max(1.0 - sin_thetatsq, 0.0));
+    const float cos_theta_t = sqrt(max(1.0 - sin_theta_t2, 0.0));
     const float rs = (eta * cos_theta_t - cos_theta_i) / (eta * cos_theta_t + cos_theta_i);
     const float rp = (eta * cos_theta_i - cos_theta_t) / (eta * cos_theta_i + cos_theta_t);
     return 0.5 * (rs * rs + rp * rp);
@@ -115,9 +115,9 @@ vec4 eval_microfacet_refraction(const in surface_info_t surface_info,
                                 const in vec3 H, 
                                 const in vec3 F) {
     vec4 contrib = vec4(0.0);
-    // if (L.z >= 0.0) {
-    //     return contrib;
-    // }
+    if (L.z >= 0.0) {
+        return contrib;
+    }
     const float L_H = dot(L, H);
     const float V_H = dot(V, H);
     const float D = gtr2_aniso(H.z, H.x, H.y, surface_info.ax, surface_info.ay);
@@ -126,12 +126,10 @@ vec4 eval_microfacet_refraction(const in surface_info_t surface_info,
     const float denom = L_H + V_H * surface_info.eta;
     const float denom2 = denom * denom;
     const float eta2 = surface_info.eta * surface_info.eta;
-    const float jacobian = abs(L_H) / denom2;
-    // contrib.xyz = pow(surface_info.albedo, vec3(0.5)) * (1.0 - F) * D * G2 * abs(V_H) * jacobian * eta2 / 
-    //     abs(L.z * V.z);
-    // contrib.w = G1 * max(0.0, V_H) * D * jacobian / V.z;
-    contrib.xyz = vec3(1.00, 0.75, 0.80);
-    contrib.w = 1.0;
+    const float jacobian = abs(L_H) / pad_above_zero(denom2);
+    contrib.xyz = pow(surface_info.albedo, vec3(0.5)) * (vec3(1.0) - F) * D * G2 * abs(V_H) * jacobian * eta2 / 
+        pad_above_zero(abs(L.z * V.z));
+    contrib.w = G1 * max(0.0, V_H) * D * jacobian / pad_above_zero(V.z);
     return contrib;
 }
 
@@ -175,7 +173,7 @@ vec4 eval_disney(const in state_t state,
                  in vec3 L) {
     vec4 bsdf_pdf = vec4(0.0);
     vec3 T, B;
-    const vec3 N = get_front_face_normal(state);
+    const vec3 N = state.hit_normal;
     onb(N, T, B);
     V = to_local(T, B, N, -V);
     L = to_local(T, B, N, L);
@@ -228,15 +226,15 @@ vec4 eval_disney(const in state_t state,
 
     if (glass_pr > 0.0) {
         const float F = dielectric_fresnel(abs_V_H, surface_info.eta);
-        // if (reflect) {
-        //     contrib = eval_microfacet_reflection(surface_info, V, L, H, vec3(F));
-        //     bsdf_pdf.xyz += glass_wt * contrib.xyz;
-        //     bsdf_pdf.w += glass_pr * F * contrib.w;
-        // } else {
+        if (reflect) {
+            contrib = eval_microfacet_reflection(surface_info, V, L, H, vec3(F));
+            bsdf_pdf.xyz += glass_wt * contrib.xyz;
+            bsdf_pdf.w += glass_pr * F * contrib.w;
+        } else {
             contrib = eval_microfacet_refraction(surface_info, V, L, H, vec3(F));
             bsdf_pdf.xyz += glass_wt * contrib.xyz;
             bsdf_pdf.w += glass_pr * (1.0 - F) * contrib.w;
-        // }
+        }
     }
 
     if (clearcoat_pr > 0.0 && reflect) {
@@ -254,7 +252,7 @@ vec3 sample_disney(const in state_t state,
                    in vec3 V) {
     vec3 L;
     vec3 T, B;
-    const vec3 N = get_front_face_normal(state);
+    const vec3 N = state.hit_normal;
     onb(N, T, B);
     V = to_local(T, B, N, -V);
 
@@ -298,13 +296,13 @@ vec3 sample_disney(const in state_t state,
         if (H.z < 0.0) {
             H = -H;
         }
-        // const float F = dielectric_fresnel(abs(dot(V, H)), surface_info.eta);
-        // const float pr_f = rand_01();
-        // if (pr_f < F) {
-        //     L = normalize(reflect(-V, H));
-        // } else {
+        const float F = dielectric_fresnel(abs(dot(V, H)), surface_info.eta);
+        const float pr_f = rand_01();
+        if (pr_f < F) {
+            L = normalize(reflect(-V, H));
+        } else {
             L = normalize(refract(-V, H, surface_info.eta));
-        // }
+        }
     } else {
         vec3 H = sample_gtr1(surface_info.clearcoat_gloss);
         if (H.z < 0.0) {
