@@ -2,6 +2,8 @@
 
 Vulkan compute shade implementation of the **[Disney BSDF model](https://blog.selfshadow.com/publications/s2015-shading-course/burley/s2015_pbs_disney_bsdf_notes.pdf)**. 
 
+![](outputs/cover.png)
+
 ## Feature
 
 - Two-level BVH for instancing
