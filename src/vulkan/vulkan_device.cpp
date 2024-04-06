@@ -1,4 +1,5 @@
 #include <ranges>
+#include <optional>
 
 #include "check.h"
 #include "vulkan/vulkan_device.h"

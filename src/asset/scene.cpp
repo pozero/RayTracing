@@ -78,7 +78,7 @@ std::tuple<render_options, camera, scene> load_scene(
                 iter != mesh_indices.end()) {
                 id = iter->second;
             } else {
-                mesh const mesh = load_mesh(full_path.c_str());
+                mesh const mesh = load_mesh(full_path.string().c_str());
                 scene.mesh_vertex_start.push_back(
                     (uint32_t) scene.vertices.size());
                 scene.vertices.insert(scene.vertices.end(),
@@ -93,11 +93,12 @@ std::tuple<render_options, camera, scene> load_scene(
             int32_t id = -1;
             std::filesystem::path full_path =
                 cur_dir / std::filesystem::path{path};
-            auto iter = texture_indices.find(full_path);
+            auto iter = texture_indices.find(full_path.string());
             if (iter != texture_indices.end()) {
                 id = iter->second;
             } else {
-                texture_data const data = get_texture_data(full_path.c_str());
+                texture_data const data =
+                    get_texture_data(full_path.string().c_str());
                 scene.textures.push_back(data);
                 id = (int32_t) scene.textures.size() - 1;
                 texture_indices[path] = id;

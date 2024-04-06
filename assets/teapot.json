@@ -10,8 +10,8 @@
         "fov": 60.0
     },
     "sky_light": {
-        "intensity": [5.0, 5.0, 5.0],
-        "environment_tex": "HDR/sunset.hdr"
+        "intensity": [1, 0.753, 0.796],
+        "environment_tex": "HDR/aft_lounge.hdr"
     },
     "material": {
         "checker": {
@@ -19,19 +19,19 @@
             "albedo_tex": "teapot/checker.png",
             "roughness": 0.5
         },
-        "white": {
-            "albedo": [0.9, 0.9, 0.9],
+        "blue": {
+            "albedo": [0.0, 0.29, 0.99],
             "roughness": 0.0
         }
     },
     "primitive": {
         "teapot_part0": {
             "mesh": "teapot/Mesh000.obj",
-            "material": "white"
+            "material": "blue"
         },
         "teapot_part1": {
             "mesh": "teapot/Mesh001.obj",
-            "material": "white"
+            "material": "blue"
         },
         "floor": {
             "mesh": "teapot/Mesh050.obj",

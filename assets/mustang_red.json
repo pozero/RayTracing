@@ -1,0 +1,111 @@
+{
+    "renderer": {
+        "resolution": [1280, 720],
+        "max_depth": 7,
+        "tile": [128, 72]
+    },
+    "camera": {
+        "lookfrom": [-7.3, 2.2, -9.6],
+        "lookat": [-0.3, 0.4, 0],
+        "fov": 22.0
+    },
+    "sky_light": {
+        "intensity": [1.411, 1.411, 1.411],
+        "environment_tex": "HDR/leadenhall_market.hdr"
+    },
+    "material": {
+        "floor": {
+            "albedo": [0.01, 0.01, 0.01],
+            "roughness": 1.0
+        },
+        "black": {
+            "albedo": [0.008, 0.008, 0.008],
+            "roughness": 1.0
+        },
+        "chrome": {
+            "albedo": [0.9, 0.9, 0.9],
+            "roughness": 0.0,
+            "metallic": 1.0
+        },
+        "glass": {
+            "albedo": [1.0, 1.0, 1.0],
+            "roughness": 0.0,
+            "spec_trans": 1.0,
+            "ior": 1.45
+        },
+        "headlight": {
+            "albedo": [1.0, 1.0, 1.0],
+            "roughness": 0.1,
+            "spec_trans": 1.0,
+            "ior": 1.45
+        },
+        "yellow_blinkers": {
+            "albedo": [1.0, 0.28, 0.122],
+            "roughness": 0.156,
+            "spec_trans": 1.0,
+            "ior": 1.45
+        },
+        "red_taillight": {
+            "albedo": [0.581, 0.009, 0.009],
+            "roughness": 0.0,
+            "metallic": 0.738
+        },
+        "paint": {
+            "albedo": [0.82, 0.0, 0.0],
+            "roughness": 0.0,
+            "metallic": 0.2,
+            "clearcoat": 1.0
+        },
+        "red_interior": {
+            "albedo": [0.2, 0.02, 0.02],
+            "roughness": 0.5,
+            "ior": 1.1
+        },
+        "tyres": {
+            "albedo": [0.008, 0.008, 0.008],
+            "roughness": 0.5
+        }
+    },
+    "primitive": {
+        "black": {
+            "mesh": "Mustang/Black.obj",
+            "material": "black"
+        },
+        "body": {
+            "mesh": "Mustang/Body.obj",
+            "material": "paint"
+        },
+        "chrome": {
+            "mesh": "Mustang/Chrome.obj",
+            "material": "chrome"
+        },
+        "floor": {
+            "mesh": "Mustang/Plane.obj",
+            "material": "floor"
+        },
+        "front_blinkers": {
+            "mesh": "Mustang/Front_Blinkers.obj",
+            "material": "yellow_blinkers"
+        },
+        "glass": {
+            "mesh": "Mustang/Glass.obj",
+            "material": "glass"
+        },
+        "headlight": {
+            "mesh": "Mustang/Lights.obj",
+            "material": "headlight"
+        },
+        "red_interior": {
+            "mesh": "Mustang/Red_Interior.obj",
+            "material": "red_interior"
+        },
+        "taillight": {
+            "mesh": "Mustang/Tail_Lights.obj",
+            "material": "red_taillight"
+        },
+        "tyres": {
+            "mesh": "Mustang/Tyres.obj",
+            "material": "tyres"
+        }
+    }
+}

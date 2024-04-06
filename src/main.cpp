@@ -7,9 +7,11 @@
 #include "asset/camera.h"
 #include "asset/scene.h"
 
-int main() {
-    auto [render_options, camera, scene] =
-        load_scene(PATH_FROM_ROOT("assets/teapot.json"));
+#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
+int main(int argc, char* argv[]) {
+    std::string_view const scene_file =
+        argc == 2 ? argv[1] : PATH_FROM_ROOT("assets/hyperion_rect_light.json");
+    auto [render_options, camera, scene] = load_scene(scene_file);
     win_width = render_options.resolution_x;
     win_height = render_options.resolution_y;
     renderer renderer{};

@@ -3,14 +3,13 @@
 #define FOUR_PI (4.0 * PI)
 #define ONE_OVER_PI (1.0 / PI)
 #define TWO_OVER_PI (2.0 / PI)
+#define ONE_OVER_TWO_PI (1.0 / (2.0 * PI))
 #define ONE_OVER_FOUR_PI (1.0 / (4.0 * PI))
 #define INFINITY 1.0 / 0.00000000000001
 #define EPSILON 0.0001
 
 float pad_above_zero(const in float val) {
-    return abs(val) < EPSILON ? 
-        sign(val) * EPSILON :
-        val;
+    return abs(val) < EPSILON ? sign(val) * EPSILON : val;
 }
 
 float luminance(const in vec3 c) {
@@ -20,19 +19,17 @@ float luminance(const in vec3 c) {
 struct stack_t {
     uint top;
     uint data[63];
-}; 
+};
 
-void push_stack(inout stack_t stk, 
-                const in uint d) {
+void push_stack(inout stack_t stk, const in uint d) {
     stk.data[stk.top] = d;
-    ++ stk.top;
+    ++stk.top;
 }
 
-bool pop_stack(inout stack_t stk,
-               inout uint d) {
+bool pop_stack(inout stack_t stk, inout uint d) {
     if (stk.top > 0) {
         d = stk.data[stk.top - 1];
-        -- stk.top;
+        --stk.top;
         return true;
     } else {
         return false;
@@ -48,10 +45,9 @@ struct vector_t {
     uint data[15];
 };
 
-void push_vector(inout vector_t vec,
-                 const in uint d) {
+void push_vector(inout vector_t vec, const in uint d) {
     vec.data[vec.size] = d;
-    ++ vec.size;
+    ++vec.size;
 }
 
 float square(const in float val) {
@@ -63,9 +59,7 @@ float pow5(const in float val) {
     return square(squared) * val;
 }
 
-void onb(const in vec3 N, 
-         inout vec3 T, 
-         inout vec3 B) {
+void onb(const in vec3 N, inout vec3 T, inout vec3 B) {
     const vec3 up = abs(N.z) < 0.9999999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
     T = normalize(cross(up, N));
     B = cross(N, T);

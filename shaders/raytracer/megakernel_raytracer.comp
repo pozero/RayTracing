@@ -1,7 +1,7 @@
 #version 460
 
-#extension GL_EXT_scalar_block_layout: require
-#extension GL_EXT_nonuniform_qualifier: require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_nonuniform_qualifier : require
 
 layout(push_constant, std430) uniform PUSH_CONSTANT {
     float packed_camera[12];
@@ -15,6 +15,7 @@ layout(push_constant, std430) uniform PUSH_CONSTANT {
 uint seed = random_seed;
 
 #include "../common/utils.glsl"
+#include "../common/to_ldr.glsl"
 #include "../common/geometry.glsl"
 #include "../common/material.glsl"
 #include "../common/light.glsl"
@@ -69,35 +70,40 @@ layout(std430, set = 2, binding = 2) readonly buffer LIGHT {
 
 layout(rgba32f, set = 3, binding = 0) uniform image2D out_img[2];
 
-layout(set = 3, binding = 1) uniform sampler2D textures[];
+layout(set = 3, binding = 1) uniform sampler2D textures[50];
 
 triangle_t unpack_triangle(const in uint idx);
 
-void get_surface_info(inout state_t state,
-                      out surface_info_t surface_info);
+void get_surface_info(inout state_t state, out surface_info_t surface_info);
 
-bool closest_hit(const in ray_t ray,
-                 inout state_t state);
+bool closest_hit(const in ray_t ray, inout state_t state);
 
-bool any_hit(const in ray_t ray,
-             const in float t_max);
+bool any_hit(const in ray_t ray, const in float t_max);
 
 vec3 ray_trace(in ray_t ray);
 
 void main() {
     const camera_t camera = unpack_camera(packed_camera);
     const ivec2 tex_coord = ivec2(gl_GlobalInvocationID.xy);
-    const uint flat_tex_coord = imageSize(out_img[preview]).x * tex_coord.y + tex_coord.x;
+    const uint flat_tex_coord =
+        imageSize(out_img[preview]).x * tex_coord.y + tex_coord.x;
     random_seed_hash_combine(flat_tex_coord);
-    const vec3 pixel = camera.upper_left_pixel + 
-        tex_coord.x * camera.pixel_delta_u + 
-        tex_coord.y * camera.pixel_delta_v;
+    const vec3 pixel = camera.upper_left_pixel +
+                       tex_coord.x * camera.pixel_delta_u +
+                       tex_coord.y * camera.pixel_delta_v;
     const float sample_offset_x = -0.5 + rand_01();
     const float sample_offset_y = -0.5 + rand_01();
-    const vec3 pixel_sample_offset = sample_offset_x * camera.pixel_delta_u + 
+    const vec3 pixel_sample_offset = sample_offset_x * camera.pixel_delta_u +
                                      sample_offset_y * camera.pixel_delta_v;
     const vec3 pixel_sample = pixel + pixel_sample_offset;
-    const ray_t ray = ray_t(camera.position, normalize(pixel_sample - camera.position));
+    const ray_t ray =
+        ray_t(camera.position, normalize(pixel_sample - camera.position));
+    // state_t state;
+    // surface_info_t surface_info;
+    // const bool hit = closest_hit(ray, state);
+    // get_surface_info(state, surface_info);
+    // const vec3 color =
+    //     hit ? surface_info.albedo + surface_info.emission : vec3(0.0);
     const vec3 color = ray_trace(ray);
     if (preview == 1) {
         imageStore(out_img[1], tex_coord, vec4(color, 1.0));
@@ -108,24 +114,24 @@ void main() {
 }
 
 triangle_t unpack_triangle(const in uint idx) {
-    const vertex_t a = unpack_vertex(packed_triangles[idx * 6 + 0],
-                                     packed_triangles[idx * 6 + 1]);
-    const vertex_t b = unpack_vertex(packed_triangles[idx * 6 + 2],
-                                     packed_triangles[idx * 6 + 3]);
-    const vertex_t c = unpack_vertex(packed_triangles[idx * 6 + 4],
-                                     packed_triangles[idx * 6 + 5]);
+    const vertex_t a = unpack_vertex(
+        packed_triangles[idx * 6 + 0], packed_triangles[idx * 6 + 1]);
+    const vertex_t b = unpack_vertex(
+        packed_triangles[idx * 6 + 2], packed_triangles[idx * 6 + 3]);
+    const vertex_t c = unpack_vertex(
+        packed_triangles[idx * 6 + 4], packed_triangles[idx * 6 + 5]);
     return triangle_t(a, b, c);
 }
 
-void get_surface_info(inout state_t state,
-                      out surface_info_t surface_info) {
+void get_surface_info(inout state_t state, out surface_info_t surface_info) {
     surface_info = empty_surface_info();
     if (state.inst_light >= 0) {
         const light_t light = lights[state.inst_light];
         if (state.front_face || light.type == LIGHT_AREA_DOUBLE_SIDED) {
             surface_info.emission = light.intensity;
             if (light.emission_tex >= 0) {
-                surface_info.emission *= texture(textures[light.emission_tex], state.hit_uv).rgb;
+                surface_info.emission *=
+                    texture(textures[light.emission_tex], state.hit_uv).rgb;
             }
         } else {
             surface_info.emission = vec3(0.0);
@@ -147,20 +153,25 @@ void get_surface_info(inout state_t state,
         surface_info.clearcoat = material.clearcoat;
         surface_info.clearcoat_gloss = material.clearcoat_gloss;
         if (material.albedo_tex >= 0) {
-            surface_info.albedo *= texture(textures[material.albedo_tex], state.hit_uv).rgb;
+            surface_info.albedo *=
+                texture(textures[material.albedo_tex], state.hit_uv).rgb;
         }
         if (material.emission_tex >= 0) {
-            surface_info.emission *= texture(textures[material.emission_tex], state.hit_uv).rgb;
+            surface_info.emission *=
+                texture(textures[material.emission_tex], state.hit_uv).rgb;
         }
         if (material.normal_tex >= 0) {
-            const vec3 normal_texel = normalize(texture(textures[material.normal_tex], state.hit_uv).rgb * 2.0 - 
-                                                vec3(1.0));
+            const vec3 normal_texel = normalize(
+                texture(textures[material.normal_tex], state.hit_uv).rgb * 2.0 -
+                vec3(1.0));
             state.hit_normal = normalize(normal_texel.x * state.hit_tangent +
                                          normal_texel.y * state.hit_bitangent +
                                          normal_texel.z * state.hit_normal);
         }
         if (material.metallic_roughness_tex >= 0) {
-            const vec2 mr_texel = texture(textures[material.metallic_roughness_tex], state.hit_uv).bg;
+            const vec2 mr_texel =
+                texture(textures[material.metallic_roughness_tex], state.hit_uv)
+                    .bg;
             surface_info.metallic = mr_texel.x;
             surface_info.roughness = max(mr_texel.y * mr_texel.y, 0.001);
         }
@@ -170,8 +181,7 @@ void get_surface_info(inout state_t state,
     }
 }
 
-bool closest_hit(const in ray_t ray,
-                 inout state_t state) {
+bool closest_hit(const in ray_t ray, inout state_t state) {
     const float t_min = 0.0;
     float t_max = INFINITY;
     stack_t nodes_to_visit;
@@ -181,14 +191,14 @@ bool closest_hit(const in ray_t ray,
     {
         const vec3 inv_dir = vec3(1.0) / ray.direction;
         const ivec3 neg_dir = ivec3(ray.direction.x < 0.0,
-                                    ray.direction.y < 0.0,
-                                    ray.direction.z < 0.0);
+            ray.direction.y < 0.0, ray.direction.z < 0.0);
         uint tlas_current_node = 0;
         while (true) {
             const bvh_node_t node = tlas[tlas_current_node];
             if (hit_aabb(node.aabb, ray, inv_dir, neg_dir, t_min, t_max)) {
                 if (node.obj_count > 0) {
-                    for (uint i = node.first_obj; i < node.first_obj + node.obj_count; ++ i) {
+                    for (uint i = node.first_obj;
+                         i < node.first_obj + node.obj_count; ++i) {
                         push_vector(instances_to_visit, i);
                     }
                     if (!pop_stack(nodes_to_visit, tlas_current_node)) {
@@ -196,8 +206,10 @@ bool closest_hit(const in ray_t ray,
                     }
                 } else {
                     const bool neg = neg_dir[node.split_axis] != 0;
-                    const uint cur_node = neg ? node.right : tlas_current_node + 1;
-                    const uint next_node = neg ? tlas_current_node + 1 : node.right;
+                    const uint cur_node =
+                        neg ? node.right : tlas_current_node + 1;
+                    const uint next_node =
+                        neg ? tlas_current_node + 1 : node.right;
                     tlas_current_node = cur_node;
                     push_stack(nodes_to_visit, next_node);
                 }
@@ -211,26 +223,31 @@ bool closest_hit(const in ray_t ray,
     uint closest_instance;
     uint closest_triangle;
     hit_record_t closest_hit_record;
-    for (uint i = 0; i < instances_to_visit.size; ++ i) {
+    for (uint i = 0; i < instances_to_visit.size; ++i) {
         const instance_t instance = instances[instances_to_visit.data[i]];
         const mesh_t mesh = meshes[instance.mesh];
-        const mat4 inverse_transform = instance.transform >= 0 ? inverse_transforms[instance.transform] :
-            mat4(1.0);
-        const ray_t transformed_ray = ray_t(vec3(inverse_transform * vec4(ray.origin, 1.0)),
-                                            vec3(inverse_transform * vec4(ray.direction, 0.0)));
+        const mat4 inverse_transform =
+            instance.transform >= 0 ? inverse_transforms[instance.transform] :
+                                      mat4(1.0);
+        const ray_t transformed_ray =
+            ray_t(vec3(inverse_transform * vec4(ray.origin, 1.0)),
+                vec3(inverse_transform * vec4(ray.direction, 0.0)));
         const vec3 inv_dir = vec3(1.0) / transformed_ray.direction;
         const ivec3 neg_dir = ivec3(transformed_ray.direction.x < 0.0,
-                                    transformed_ray.direction.y < 0.0,
-                                    transformed_ray.direction.z < 0.0);
+            transformed_ray.direction.y < 0.0,
+            transformed_ray.direction.z < 0.0);
         uint blas_current_node = mesh.bvh_start;
         clear_stack(nodes_to_visit);
         while (true) {
             const bvh_node_t node = blas[blas_current_node];
-            if (hit_aabb(node.aabb, transformed_ray, inv_dir, neg_dir, t_min, t_max)) {
+            if (hit_aabb(node.aabb, transformed_ray, inv_dir, neg_dir, t_min,
+                    t_max)) {
                 if (node.obj_count > 0) {
-                    for (uint t = node.first_obj; t < node.first_obj + node.obj_count; ++ t) {
+                    for (uint t = node.first_obj;
+                         t < node.first_obj + node.obj_count; ++t) {
                         const triangle_t triangle = unpack_triangle(t);
-                        const hit_record_t hit_rec = hit_triangle(triangle, transformed_ray, t_min, t_max);
+                        const hit_record_t hit_rec = hit_triangle(
+                            triangle, transformed_ray, t_min, t_max);
                         if (hit_rec.hit) {
                             t_max = hit_rec.t;
                             closest_instance = instances_to_visit.data[i];
@@ -243,8 +260,10 @@ bool closest_hit(const in ray_t ray,
                     }
                 } else {
                     const bool neg = neg_dir[node.split_axis] != 0;
-                    const uint cur_node = neg ? node.right : blas_current_node + 1;
-                    const uint next_node = neg ? blas_current_node + 1 : node.right;
+                    const uint cur_node =
+                        neg ? node.right : blas_current_node + 1;
+                    const uint next_node =
+                        neg ? blas_current_node + 1 : node.right;
                     blas_current_node = cur_node;
                     push_stack(nodes_to_visit, next_node);
                 }
@@ -271,28 +290,31 @@ bool closest_hit(const in ray_t ray,
     const vec2 c_uv = triangle.c.tex_coord;
     state.hit_position = ray_at(ray, closest_hit_record.t);
     // normal coordinate in model space
-    const vec3 outward_normal = closest_hit_record.b0 * a_normal + 
-        closest_hit_record.b1 * b_normal + 
-        closest_hit_record.b2 * c_normal;
+    const vec3 outward_normal = closest_hit_record.b0 * a_normal +
+                                closest_hit_record.b1 * b_normal +
+                                closest_hit_record.b2 * c_normal;
     state.front_face = dot(ray.direction, outward_normal) < 0.0;
     state.hit_normal = state.front_face ? outward_normal : -outward_normal;
     const vec3 delta_pos1 = b - a;
     const vec3 delta_pos2 = c - a;
     const vec2 delta_uv1 = b_uv - a_uv;
     const vec2 delta_uv2 = c_uv - a_uv;
-    const float delta_uv_inv_dev = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
-    state.hit_tangent = delta_uv_inv_dev * (delta_uv2.y * delta_pos1 - delta_uv1.y * delta_pos2);
-    state.hit_bitangent = delta_uv_inv_dev * (-delta_uv2.x * delta_pos1 + delta_uv1.x * delta_pos2);
+    const float delta_uv_inv_dev =
+        1.0 / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
+    state.hit_tangent = delta_uv_inv_dev *
+                        (delta_uv2.y * delta_pos1 - delta_uv1.y * delta_pos2);
+    state.hit_bitangent = delta_uv_inv_dev * (-delta_uv2.x * delta_pos1 +
+                                                 delta_uv1.x * delta_pos2);
     // transform to world space
     if (instance.transform >= 0) {
         const mat4 transform = transforms[instance.transform];
-        state.hit_normal = normalize(transpose(inverse(mat3(transform))) * state.hit_normal);
+        state.hit_normal =
+            normalize(transpose(inverse(mat3(transform))) * state.hit_normal);
         state.hit_tangent = normalize(mat3(transform) * state.hit_tangent);
         state.hit_bitangent = normalize(mat3(transform) * state.hit_bitangent);
     }
-    state.hit_uv = closest_hit_record.b0 * a_uv + 
-        closest_hit_record.b1 * b_uv + 
-        closest_hit_record.b2 * c_uv;
+    state.hit_uv = closest_hit_record.b0 * a_uv + closest_hit_record.b1 * b_uv +
+                   closest_hit_record.b2 * c_uv;
     state.hit_t = closest_hit_record.t;
     state.inst_material = instance.material;
     state.inst_medium = instance.medium;
@@ -300,8 +322,7 @@ bool closest_hit(const in ray_t ray,
     return true;
 }
 
-bool any_hit(const in ray_t ray,
-             const in float t_max) {
+bool any_hit(const in ray_t ray, const in float t_max) {
     const float t_min = 0.0;
     stack_t nodes_to_visit;
     nodes_to_visit.top = 0;
@@ -310,14 +331,14 @@ bool any_hit(const in ray_t ray,
     {
         const vec3 inv_dir = vec3(1.0) / ray.direction;
         const ivec3 neg_dir = ivec3(ray.direction.x < 0.0,
-                                    ray.direction.y < 0.0,
-                                    ray.direction.z < 0.0);
+            ray.direction.y < 0.0, ray.direction.z < 0.0);
         uint tlas_current_node = 0;
         while (true) {
             const bvh_node_t node = tlas[tlas_current_node];
             if (hit_aabb(node.aabb, ray, inv_dir, neg_dir, t_min, t_max)) {
                 if (node.obj_count > 0) {
-                    for (uint i = node.first_obj; i < node.first_obj + node.obj_count; ++ i) {
+                    for (uint i = node.first_obj;
+                         i < node.first_obj + node.obj_count; ++i) {
                         push_vector(instances_to_visit, i);
                     }
                     if (!pop_stack(nodes_to_visit, tlas_current_node)) {
@@ -325,8 +346,10 @@ bool any_hit(const in ray_t ray,
                     }
                 } else {
                     const bool neg = neg_dir[node.split_axis] != 0;
-                    const uint cur_node = neg ? node.right : tlas_current_node + 1;
-                    const uint next_node = neg ? tlas_current_node + 1 : node.right;
+                    const uint cur_node =
+                        neg ? node.right : tlas_current_node + 1;
+                    const uint next_node =
+                        neg ? tlas_current_node + 1 : node.right;
                     tlas_current_node = cur_node;
                     push_stack(nodes_to_visit, next_node);
                 }
@@ -337,26 +360,31 @@ bool any_hit(const in ray_t ray,
             }
         }
     }
-    for (uint i = 0; i < instances_to_visit.size; ++ i) {
+    for (uint i = 0; i < instances_to_visit.size; ++i) {
         const instance_t instance = instances[instances_to_visit.data[i]];
         const mesh_t mesh = meshes[instance.mesh];
-        const mat4 inverse_transform = instance.transform >= 0 ? inverse_transforms[instance.transform] :
-            mat4(1.0);
-        const ray_t transformed_ray = ray_t(vec3(inverse_transform * vec4(ray.origin, 1.0)),
-                                            vec3(inverse_transform * vec4(ray.direction, 0.0)));
+        const mat4 inverse_transform =
+            instance.transform >= 0 ? inverse_transforms[instance.transform] :
+                                      mat4(1.0);
+        const ray_t transformed_ray =
+            ray_t(vec3(inverse_transform * vec4(ray.origin, 1.0)),
+                vec3(inverse_transform * vec4(ray.direction, 0.0)));
         const vec3 inv_dir = vec3(1.0) / transformed_ray.direction;
         const ivec3 neg_dir = ivec3(transformed_ray.direction.x < 0.0,
-                                    transformed_ray.direction.y < 0.0,
-                                    transformed_ray.direction.z < 0.0);
+            transformed_ray.direction.y < 0.0,
+            transformed_ray.direction.z < 0.0);
         uint blas_current_node = mesh.bvh_start;
         clear_stack(nodes_to_visit);
         while (true) {
             const bvh_node_t node = blas[blas_current_node];
-            if (hit_aabb(node.aabb, transformed_ray, inv_dir, neg_dir, t_min, t_max)) {
+            if (hit_aabb(node.aabb, transformed_ray, inv_dir, neg_dir, t_min,
+                    t_max)) {
                 if (node.obj_count > 0) {
-                    for (uint t = node.first_obj; t < node.first_obj + node.obj_count; ++ t) {
+                    for (uint t = node.first_obj;
+                         t < node.first_obj + node.obj_count; ++t) {
                         const triangle_t triangle = unpack_triangle(t);
-                        if (hit_triangle_quick(triangle, transformed_ray, t_min, t_max)) {
+                        if (hit_triangle_quick(
+                                triangle, transformed_ray, t_min, t_max)) {
                             return true;
                         }
                     }
@@ -365,8 +393,10 @@ bool any_hit(const in ray_t ray,
                     }
                 } else {
                     const bool neg = neg_dir[node.split_axis] != 0;
-                    const uint cur_node = neg ? node.right : blas_current_node + 1;
-                    const uint next_node = neg ? blas_current_node + 1 : node.right;
+                    const uint cur_node =
+                        neg ? node.right : blas_current_node + 1;
+                    const uint next_node =
+                        neg ? blas_current_node + 1 : node.right;
                     blas_current_node = cur_node;
                     push_stack(nodes_to_visit, next_node);
                 }
@@ -391,61 +421,61 @@ vec4 eval_sky_light(const in ray_t ray) {
         intensity_pdf.w = ONE_OVER_FOUR_PI;
     } else {
         const float theta = acos(clamp(ray.direction.y, -1.0, 1.0));
-        const vec2 uv = vec2((PI + atan(ray.direction.z, ray.direction.x)) * TWO_OVER_PI,
+        const vec2 uv = vec2(
+            (PI + atan(ray.direction.z, ray.direction.x)) * ONE_OVER_TWO_PI,
             theta * ONE_OVER_PI);
-        intensity_pdf.xyz = 
-            sky.intensity * texture(textures[sky.emission_tex], uv).rgb;
+        intensity_pdf.xyz =
+            sky.intensity *
+            tone_mapping(texture(textures[sky.emission_tex], uv).rgb);
         const float total_luminance = sky.direction.x;
         const vec2 tex_size = sky.direction.yz;
         const float padded_sin_theta = pad_above_zero(sin(theta));
-        intensity_pdf.w = 
-            ((luminance(sky.intensity) / total_luminance) * tex_size.x * tex_size.y) /
-            (TWO_PI * PI * padded_sin_theta);
+        intensity_pdf.w = ((luminance(sky.intensity) / total_luminance) *
+                              tex_size.x * tex_size.y) /
+                          (TWO_PI * PI * padded_sin_theta);
     }
     return intensity_pdf;
 }
 
-bool sample_light(const in ray_t ray,
-                  const in vec3 position,
-                  out light_sample_t light_sample) {
+bool sample_light(const in ray_t ray, const in vec3 position,
+    out light_sample_t light_sample) {
     light_sample = empty_light_sample();
     const float light_pdf = 1.0 / light_count;
     const light_t light = lights[rand_uint(0, light_count - 1)];
     const float infinity_light_t_max = INFINITY - EPSILON;
     light_sample.type = light.type;
     if (light.type == LIGHT_SKY) {
-        const vec3 direction = uniform_sample_sphere();
+        const vec3 direction = uniform_sample_hemisphere(ray.direction);
         const ray_t shadow_ray = ray_t(position, direction);
         if (any_hit(shadow_ray, infinity_light_t_max)) {
             return false;
         }
-        const vec4 intensity_pdf = eval_sky_light(ray);
+        const vec4 intensity_pdf = eval_sky_light(shadow_ray);
         light_sample.intensity = intensity_pdf.xyz;
-        light_sample.pdf = intensity_pdf.w;
+        light_sample.pdf = light_pdf * intensity_pdf.w;
         light_sample.wi = direction;
         return true;
     } else if (light.type == LIGHT_DISTANT) {
     } else if (light.type == LIGHT_AREA_SINGLE_SIDED ||
                light.type == LIGHT_AREA_DOUBLE_SIDED) {
         const mesh_t mesh = meshes[light.mesh];
-        const uint triangle_i = mesh.triangle_offset +
-            rand_uint(0, mesh.triangle_count - 1);
-        const mat4 transform = light.transform >= 0 ? 
-            transforms[light.transform] :
-            mat4(1.0);
-        const mat3 inverse_transform = light.transform >= 0 ?
-            inverse(mat3(transform)) :
-            mat3(1.0);
+        const uint triangle_i =
+            mesh.triangle_offset + rand_uint(0, mesh.triangle_count - 1);
+        const mat4 transform =
+            light.transform >= 0 ? transforms[light.transform] : mat4(1.0);
+        const mat3 inverse_transform =
+            light.transform >= 0 ? inverse(mat3(transform)) : mat3(1.0);
         const triangle_t triangle = unpack_triangle(triangle_i);
         const vec3 tri_coord = uniform_sample_triangle();
-        const vec3 light_sample_pos = vec3(transform * 
-           vec4(tri_coord.x * triangle.a.position +
-                tri_coord.y * triangle.b.position +
-                tri_coord.z * triangle.c.position, 1.0));
-        const vec3 light_sample_nor = transpose(inverse_transform) *
-           (tri_coord.x * triangle.a.normal +
-            tri_coord.y * triangle.b.normal +
-            tri_coord.z * triangle.c.normal);
+        const vec3 light_sample_pos =
+            vec3(transform * vec4(tri_coord.x * triangle.a.position +
+                                      tri_coord.y * triangle.b.position +
+                                      tri_coord.z * triangle.c.position,
+                                 1.0));
+        const vec3 light_sample_nor =
+            transpose(inverse_transform) *
+            (tri_coord.x * triangle.a.normal + tri_coord.y * triangle.b.normal +
+                tri_coord.z * triangle.c.normal);
         const vec3 light_to_frag = light_sample_pos - position;
         if (light.type != LIGHT_AREA_DOUBLE_SIDED &&
             dot(light_to_frag, light_sample_nor) > 0.0) {
@@ -461,14 +491,15 @@ bool sample_light(const in ray_t ray,
         vec3 intensity = light.intensity;
         if (light.emission_tex >= 0) {
             const vec2 uv = tri_coord.x * triangle.a.tex_coord +
-                tri_coord.y * triangle.b.tex_coord +
-                tri_coord.z * triangle.c.tex_coord;
+                            tri_coord.y * triangle.b.tex_coord +
+                            tri_coord.z * triangle.c.tex_coord;
             intensity *= texture(textures[light.emission_tex], uv).rgb;
         }
         const float pdf_on_light = 1.0 / light.direction.x;
         light_sample.intensity = intensity;
         light_sample.pdf = light_pdf * pdf_on_light *
-            (light_frag_dist2 / abs(dot(light_sample_nor, light_frag_direction)));
+                           (light_frag_dist2 / abs(dot(light_sample_nor,
+                                                   light_frag_direction)));
         light_sample.wi = shadow_ray.direction;
         return true;
     }
@@ -482,13 +513,14 @@ vec3 ray_trace(in ray_t ray) {
     surface_info_t surface_info;
     light_sample_t light_sample;
     vec4 bsdf_pdf;
-    for (uint depth = 0; ; ++ depth) {
+    for (uint depth = 0;; ++depth) {
         const bool hit_any = closest_hit(ray, state);
         if (!hit_any) {
             const vec4 intensity_pdf = eval_sky_light(ray);
             if (intensity_pdf.w > 0.0) {
-                const float mis = depth > 0 ?
-                    power_heuristic(bsdf_pdf.w, intensity_pdf.w) : 1.0f;
+                const float mis =
+                    depth > 0 ? power_heuristic(bsdf_pdf.w, intensity_pdf.w) :
+                                1.0f;
                 radiance += mis * intensity_pdf.xyz * throughput;
             }
             break;
@@ -502,17 +534,25 @@ vec3 ray_trace(in ray_t ray) {
             break;
         }
         const vec3 front_face_normal = get_front_face_normal(state);
-        const vec3 shadow_ray_origin = state.hit_position + EPSILON * front_face_normal;
+        const vec3 shadow_ray_origin =
+            state.hit_position + EPSILON * front_face_normal;
         if (sample_light(ray, shadow_ray_origin, light_sample)) {
             const bool is_delta = light_sample.type == LIGHT_DISTANT;
-            bsdf_pdf = eval_disney(state, surface_info, ray.direction, light_sample.wi);
+            bsdf_pdf = eval_disney(
+                state, surface_info, ray.direction, light_sample.wi);
             if (bsdf_pdf.w > 0.0) {
-                const float mis = is_delta ? 1.0 : power_heuristic(light_sample.pdf, bsdf_pdf.w);
-                radiance += (mis * bsdf_pdf.xyz * light_sample.intensity / light_sample.pdf) * throughput;
+                const float mis =
+                    is_delta ? 1.0 :
+                               power_heuristic(light_sample.pdf, bsdf_pdf.w);
+                radiance += (mis * bsdf_pdf.xyz * light_sample.intensity /
+                                light_sample.pdf) *
+                            throughput;
             }
         }
-        const vec3 next_direction = sample_disney(state, surface_info, ray.direction);
-        bsdf_pdf = eval_disney(state, surface_info, ray.direction, next_direction);
+        const vec3 next_direction =
+            sample_disney(state, surface_info, ray.direction);
+        bsdf_pdf =
+            eval_disney(state, surface_info, ray.direction, next_direction);
         if (bsdf_pdf.w > 0.0) {
             throughput *= bsdf_pdf.xyz / bsdf_pdf.w;
         } else {

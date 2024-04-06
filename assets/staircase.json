@@ -1,0 +1,201 @@
+{
+    "renderer": {
+        "resolution": [640, 800],
+        "max_depth": 7,
+        "tile": [64, 80]
+    },
+    "camera": {
+        "lookfrom": [0.05555139, 1.73679901, 4.94515045],
+        "lookat": [0.05555139, 1.73679901, 0.93515045],
+        "fov": 42.0
+    },
+    "material": {
+        "wood_floor": {
+            "albedo_tex": "staircase/textures/WoodFloor.png",
+            "roughness": 0.1
+        },
+        "wallpaper": {
+            "albedo_tex": "staircase/textures/Wallpaper.png"
+        },
+        "wood_stairs": {
+            "albedo_tex": "staircase/textures/WoodPanel.png",
+            "roughness": 0.1
+        },
+        "white_paint": {
+            "albedo": [0.578596, 0.578596, 0.578596]
+        },
+        "magnolia_paint": {
+            "albedo": [0.578596, 0.578596, 0.578596]
+        },
+        "painting1": {
+            "albedo_tex": "staircase/textures/Painting1.png"
+        },
+        "painting2": {
+            "albedo_tex": "staircase/textures/Painting2.png"
+        },
+        "painting3": {
+            "albedo_tex": "staircase/textures/Painting3.png"
+        },
+        "gold": {
+            "albedo": [1.0, 0.95, 0.35],
+            "metallic": 1.0,
+            "roughness": 0.05
+        },
+        "wood_chair": {
+            "albedo_tex": "staircase/textures/WoodChair.png",
+            "roughness": 0.1
+        },
+        "chair_seat": {
+            "albedo": [0.117647, 0.054902, 0.0666667],
+            "roughness": 0.1
+        },
+        "wood_lamp": {
+            "albedo_tex": "staircase/textures/WoodChair.png",
+            "roughness": 0.1
+        },
+        "brass": {
+            "albedo": [0.27, 0.254, 0.15],
+            "metallic": 1.0,
+            "roughness": 0.01
+        },
+        "stainless_steel": {
+            "albedo": [1.0, 1.0, 1.0],
+            "metallic": 1.0,
+            "roughness": 0.1,
+            "anisotropic": 0.5
+        },
+        "white_plastic": {
+            "albedo": [1.0, 1.0, 1.0]
+        },
+        "lampshade": {
+            "albedo_tex": "staircase/textures/Fabric.png"
+        },
+        "black": {
+            "albedo": [0.01, 0.01, 0.01]
+        },
+        "brushed_aluminium": {
+            "albedo_tex": "staircase/textures/BrushedAluminium.png",
+            "metallic": 1.0,
+            "roughness": 0.01
+        },
+        "glass": {
+            "albedo": [1.0, 1.0, 1.0],
+            "spec_trans": 1.0,
+            "ior": 1.45,
+            "roughness": 0.0
+        },
+        "candles": {
+            "albedo": [1.0, 1.0, 1.0]
+        }
+    },
+    "primitive": {
+        "black": {
+            "mesh": "staircase/Black.obj",
+            "material": "black",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "brass": {
+            "mesh": "staircase/Brass.obj",
+            "material": "brass",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "brushed_aluminium": {
+            "mesh": "staircase/BrushedAluminium.obj",
+            "material": "brushed_aluminium",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "candles": {
+            "mesh": "staircase/Candles.obj",
+            "material": "candles",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "chair_seat": {
+            "mesh": "staircase/ChairSeat.obj",
+            "material": "chair_seat",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "glass": {
+            "mesh": "staircase/Glass.obj",
+            "material": "glass",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "gold": {
+            "mesh": "staircase/Gold.obj",
+            "material": "gold",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "lampshade": {
+            "mesh": "staircase/Lampshade.obj",
+            "material": "lampshade",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "magnolia_paint": {
+            "mesh": "staircase/MagnoliaPaint.obj",
+            "material": "magnolia_paint",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "painting1": {
+            "mesh": "staircase/Painting1.obj",
+            "material": "painting1",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "painting2": {
+            "mesh": "staircase/Painting2.obj",
+            "material": "painting2",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "painting3": {
+            "mesh": "staircase/Painting3.obj",
+            "material": "painting3",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "stainless_steel": {
+            "mesh": "staircase/StainlessSteel.obj",
+            "material": "stainless_steel",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "wallpaper": {
+            "mesh": "staircase/Wallpaper.obj",
+            "material": "wallpaper",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "white_paint": {
+            "mesh": "staircase/WhitePaint.obj",
+            "material": "white_paint",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "white_plastic": {
+            "mesh": "staircase/WhitePlastic.obj",
+            "material": "white_plastic",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "wood_chair": {
+            "mesh": "staircase/WoodChair.obj",
+            "material": "wood_chair",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "wood_floor": {
+            "mesh": "staircase/WoodFloor.obj",
+            "material": "wood_floor",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "wood_lamp": {
+            "mesh": "staircase/WoodLamp.obj",
+            "material": "wood_lamp",
+            "scale": [0.01, 0.01, 0.01]
+        },
+        "wood_stairs": {
+            "mesh": "staircase/WoodStairs.obj",
+            "material": "wood_stairs",
+            "scale": [0.01, 0.01, 0.01]
+        }
+    },
+    "light": {
+        "area": {
+            "rect": {
+                "mesh": "staircase/rect_light.obj",
+                "intensity": [15, 15, 5]
+            }
+        }
+    }
+}

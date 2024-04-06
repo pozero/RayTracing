@@ -51,7 +51,7 @@ static struct {
     glm::uvec2 current{0};
 } tiles;
 
-uint32_t constexpr PREVIEW_RATIO = 5;
+uint32_t constexpr PREVIEW_RATIO = 10;
 static uint32_t preview_width;
 static uint32_t preview_height;
 
@@ -103,6 +103,8 @@ static struct {
 } frame_objects{};
 
 static uint32_t constexpr MEGAKERNAL_RAYTRACER_SET = 4;
+
+static uint32_t constexpr MAX_TEXTURE = 50;
 
 static uint32_t accumulation_counter = 0;
 
@@ -228,18 +230,9 @@ static void create_megakernel_raytracer_pipeline() {
                                                {vk::DescriptorType::eStorageBuffer, 1},
                                                {vk::DescriptorType::eStorageBuffer, 1}},
     };
-    uint32_t const texture_array_size =
-        descriptor_indexing_properties
-            .maxDescriptorSetUpdateAfterBindSampledImages;
-    vk::DescriptorBindingFlags const texture_array_binding_flags =
-        vk::DescriptorBindingFlagBits::eVariableDescriptorCount |
-        vk::DescriptorBindingFlagBits::eUpdateAfterBind |
-        vk::DescriptorBindingFlagBits::ePartiallyBound |
-        vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
-    std::vector<vk_descriptor_set_binding> set_3_binding{
-        {vk::DescriptorType::eStorageImage, 2},
-        {vk::DescriptorType::eCombinedImageSampler, texture_array_size,
-         texture_array_binding_flags}
+    std::vector<vk_descriptor_set_binding> const set_3_binding{
+        {        vk::DescriptorType::eStorageImage,           2},
+        {vk::DescriptorType::eCombinedImageSampler, MAX_TEXTURE}
     };
     for (uint32_t s = 0; s < MEGAKERNAL_RAYTRACER_SET - 1; ++s) {
         megakernel_raytracer.descriptor_layouts[s] =
@@ -250,8 +243,7 @@ static void create_megakernel_raytracer_pipeline() {
             megakernel_raytracer.descriptor_sets[s]);
     }
     megakernel_raytracer.descriptor_layouts[3] = create_descriptor_set_layout(
-        device, vk::ShaderStageFlagBits::eCompute, set_3_binding,
-        vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool);
+        device, vk::ShaderStageFlagBits::eCompute, set_3_binding);
     create_descriptor_set(device, indexing_descriptor_pool,
         megakernel_raytracer.descriptor_layouts[3],
         megakernel_raytracer.descriptor_sets[3]);
@@ -275,6 +267,7 @@ static void destroy_megakernel_raytracer_pipeline() {
 }
 
 static void prepare_megakernel_raytracer_resources(scene const& scene) {
+    CHECK(scene.textures.size() <= MAX_TEXTURE, "");
     clean_megakernel_raytracer_resources();
     light_count = (uint32_t) scene.lights.size();
     sky_light_idx = scene.lights.back().type == light_type::sky ?
